@@ -1,0 +1,12 @@
+# NetBeans specific #
+/nbproject/private/
+/build/
+/dist/
+/nbbuild/
+/nbdist/
+
+# Other #
+*.jar
+*.zip
+*.tar
+*.gz
