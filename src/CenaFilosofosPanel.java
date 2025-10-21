@@ -4,7 +4,7 @@ import java.awt.geom.AffineTransform;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.Random;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.locks.Condition; // Nuevo
+import java.util.concurrent.locks.Condition;
 
 public class CenaFilosofosPanel extends JPanel {
     private static final int NUM_FILOSOFOS = 5;
@@ -19,8 +19,8 @@ public class CenaFilosofosPanel extends JPanel {
     private boolean[] tenedorEnUso = new boolean[NUM_FILOSOFOS];
     private final String tipoSincronizacion;
     
-    // Para la implementación con Variable de Condición
-    private MonitorMesa monitorMesa;
+    private MonitorMesaCondicion monitorMesaCondicion; // Monitor Tipo 1 (Variable de Condición)
+    private MonitorMesaMonitores monitorMesaMonitores; // Monitor Tipo 2 (Monitores)
 
     public CenaFilosofosPanel(String tipoSincronizacion) {
         this.tipoSincronizacion = tipoSincronizacion;
@@ -30,9 +30,12 @@ public class CenaFilosofosPanel extends JPanel {
             estadoFilosofos[i] = "Pensando";
         }
         
-        // Inicializar Monitor de Condición si es necesario
         if ("Variable de Condición".equals(tipoSincronizacion)) {
-            monitorMesa = new MonitorMesa(this);
+            monitorMesaCondicion = new MonitorMesaCondicion(this);
+            monitorMesaMonitores = null;
+        } else if ("Monitores".equals(tipoSincronizacion)) {
+            monitorMesaCondicion = null;
+            monitorMesaMonitores = new MonitorMesaMonitores(this);
         }
         
         iniciarSimulacion();
@@ -54,10 +57,15 @@ public class CenaFilosofosPanel extends JPanel {
             }
         } else if ("Variable de Condición".equals(tipoSincronizacion)) {
             for (int i = 0; i < NUM_FILOSOFOS; i++) {
-                FilosofoCondicion f = new FilosofoCondicion(i, monitorMesa, this);
+                FilosofoCondicion f = new FilosofoCondicion(i, monitorMesaCondicion, this);
                 new Thread(f).start();
             }
-        } else {
+        } else if ("Monitores".equals(tipoSincronizacion)) {
+             for (int i = 0; i < NUM_FILOSOFOS; i++) {
+                FilosofoMonitores f = new FilosofoMonitores(i, monitorMesaMonitores, this);
+                new Thread(f).start();
+            }
+        } else { // Mutex
             for (int i = 0; i < NUM_FILOSOFOS; i++) {
                 Tenedor tenedorIzquierdo = tenedores[i];
                 Tenedor tenedorDerecho = tenedores[(i + 1) % NUM_FILOSOFOS];
@@ -172,17 +180,17 @@ public class CenaFilosofosPanel extends JPanel {
     }
     
     // ====================================================================
-    // CLASES DE SINCRONIZACIÓN CON VARIABLE DE CONDICIÓN (Monitor)
+    // CLASES DE SINCRONIZACIÓN MONITORES (ReentrantLock / Condition)
     // ====================================================================
     
     enum Estado { PENSANDO, HAMBRIENTO, COMIENDO };
     
-    private class MonitorMesa {
+    private class MonitorMesaMonitores {
         private final ReentrantLock lock = new ReentrantLock();
-        private final Condition[] condition = new Condition[NUM_FILOSOFOS]; // Una condición por filósofo
+        private final Condition[] condition = new Condition[NUM_FILOSOFOS]; 
         private final Estado[] estado = new Estado[NUM_FILOSOFOS];
         
-        public MonitorMesa(CenaFilosofosPanel panel) {
+        public MonitorMesaMonitores(CenaFilosofosPanel panel) {
             for (int i = 0; i < NUM_FILOSOFOS; i++) {
                 condition[i] = lock.newCondition();
                 estado[i] = Estado.PENSANDO;
@@ -194,21 +202,15 @@ public class CenaFilosofosPanel extends JPanel {
         private int vecinoIzquierdo(int i) { return (i + NUM_FILOSOFOS - 1) % NUM_FILOSOFOS; }
         private int vecinoDerecho(int i) { return (i + 1) % NUM_FILOSOFOS; }
         
-        /**
-         * Verifica si el filósofo i puede comer y lo pone a comer si es posible.
-         */
         private void test(int i, CenaFilosofosPanel panel) {
-            // Un filósofo hambriento puede comer si ninguno de sus vecinos está comiendo
             if (estado[i] == Estado.HAMBRIENTO &&
                 estado[vecinoIzquierdo(i)] != Estado.COMIENDO &&
                 estado[vecinoDerecho(i)] != Estado.COMIENDO) {
                 
                 estado[i] = Estado.COMIENDO;
-                // Actualización de estado en la interfaz
                 panel.actualizarEstado(i, "Comiendo");
                 panel.setTenedorEnUso(izquierda(i), true);
                 panel.setTenedorEnUso(derecha(i), true);
-                // Despierta al filósofo que estaba esperando
                 condition[i].signal(); 
             }
         }
@@ -219,7 +221,6 @@ public class CenaFilosofosPanel extends JPanel {
                 estado[i] = Estado.HAMBRIENTO;
                 panel.actualizarEstado(i, "Hambriento");
                 test(i, panel);
-                // Espera MIENTRAS no pueda comer
                 while (estado[i] != Estado.COMIENDO) {
                     condition[i].await();
                 }
@@ -236,7 +237,6 @@ public class CenaFilosofosPanel extends JPanel {
                 panel.setTenedorEnUso(izquierda(i), false);
                 panel.setTenedorEnUso(derecha(i), false);
 
-                // Revisa si los vecinos pueden empezar a comer ahora
                 test(vecinoIzquierdo(i), panel);
                 test(vecinoDerecho(i), panel);
             } finally {
@@ -245,13 +245,13 @@ public class CenaFilosofosPanel extends JPanel {
         }
     }
     
-    private static class FilosofoCondicion implements Runnable {
+    private static class FilosofoMonitores implements Runnable {
         private final int id;
-        private final MonitorMesa monitor;
+        private final MonitorMesaMonitores monitor;
         private final CenaFilosofosPanel panel;
         private final Random random = new Random();
 
-        public FilosofoCondicion(int id, MonitorMesa monitor, CenaFilosofosPanel panel) {
+        public FilosofoMonitores(int id, MonitorMesaMonitores monitor, CenaFilosofosPanel panel) {
             this.id = id;
             this.monitor = monitor;
             this.panel = panel;
@@ -263,7 +263,7 @@ public class CenaFilosofosPanel extends JPanel {
                 pensar();
                 try {
                     monitor.tomarTenedores(id, panel);
-                    comer();
+                    Thread.sleep(random.nextInt(3000) + 1000); // Comer
                     monitor.dejarTenedores(id, panel);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -279,11 +279,103 @@ public class CenaFilosofosPanel extends JPanel {
                 Thread.currentThread().interrupt();
             }
         }
-
-        private void comer() {
+    }
+    
+    // ====================================================================
+    // CLASES DE SINCRONIZACIÓN VARIABLE DE CONDICIÓN (ReentrantLock / Condition - Estructuralmente Separada)
+    // ====================================================================
+    
+    private class MonitorMesaCondicion {
+        // Mantiene la estructura para diferenciar del Monitor 'principal'
+        private final ReentrantLock lock = new ReentrantLock();
+        private final Condition[] condition = new Condition[NUM_FILOSOFOS]; 
+        private final Estado[] estado = new Estado[NUM_FILOSOFOS];
+        
+        public MonitorMesaCondicion(CenaFilosofosPanel panel) {
+            for (int i = 0; i < NUM_FILOSOFOS; i++) {
+                condition[i] = lock.newCondition();
+                estado[i] = Estado.PENSANDO;
+            }
+        }
+        
+        private int izquierda(int i) { return i; } 
+        private int derecha(int i) { return (i + 1) % NUM_FILOSOFOS; } 
+        private int vecinoIzquierdo(int i) { return (i + NUM_FILOSOFOS - 1) % NUM_FILOSOFOS; }
+        private int vecinoDerecho(int i) { return (i + 1) % NUM_FILOSOFOS; }
+        
+        private void test(int i, CenaFilosofosPanel panel) {
+            if (estado[i] == Estado.HAMBRIENTO &&
+                estado[vecinoIzquierdo(i)] != Estado.COMIENDO &&
+                estado[vecinoDerecho(i)] != Estado.COMIENDO) {
+                
+                estado[i] = Estado.COMIENDO;
+                panel.actualizarEstado(i, "Comiendo");
+                panel.setTenedorEnUso(izquierda(i), true);
+                panel.setTenedorEnUso(derecha(i), true);
+                condition[i].signal(); 
+            }
+        }
+        
+        public void tomarTenedores(int i, CenaFilosofosPanel panel) throws InterruptedException {
+            lock.lock();
             try {
-                // El estado "Comiendo" ya se actualiza dentro del monitor.
-                Thread.sleep(random.nextInt(3000) + 1000);
+                estado[i] = Estado.HAMBRIENTO;
+                panel.actualizarEstado(i, "Hambriento");
+                test(i, panel);
+                while (estado[i] != Estado.COMIENDO) {
+                    condition[i].await();
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
+        
+        public void dejarTenedores(int i, CenaFilosofosPanel panel) {
+            lock.lock();
+            try {
+                estado[i] = Estado.PENSANDO;
+                panel.actualizarEstado(i, "Pensando");
+                panel.setTenedorEnUso(izquierda(i), false);
+                panel.setTenedorEnUso(derecha(i), false);
+
+                test(vecinoIzquierdo(i), panel);
+                test(vecinoDerecho(i), panel);
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+    
+    private static class FilosofoCondicion implements Runnable {
+        private final int id;
+        private final MonitorMesaCondicion monitor;
+        private final CenaFilosofosPanel panel;
+        private final Random random = new Random();
+
+        public FilosofoCondicion(int id, MonitorMesaCondicion monitor, CenaFilosofosPanel panel) {
+            this.id = id;
+            this.monitor = monitor;
+            this.panel = panel;
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                pensar();
+                try {
+                    monitor.tomarTenedores(id, panel);
+                    Thread.sleep(random.nextInt(3000) + 1000); // Comer
+                    monitor.dejarTenedores(id, panel);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        private void pensar() {
+            try {
+                panel.actualizarEstado(id, "Pensando");
+                Thread.sleep(random.nextInt(3000) + 1000); 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -291,11 +383,10 @@ public class CenaFilosofosPanel extends JPanel {
     }
     
     // ====================================================================
-    // CLASES DE SINCRONIZACIÓN CON MUTEX (EXISTENTE)
+    // CLASES DE SINCRONIZACIÓN MUTEX Y SEMÁFORO (EXISTENTES)
     // ====================================================================
 
     private static class Filosofo implements Runnable {
-        // ... (Se mantiene igual) ...
         private final int id;
         private final Tenedor tenedorIzquierdo;
         private final Tenedor tenedorDerecho;
@@ -332,7 +423,6 @@ public class CenaFilosofosPanel extends JPanel {
             Tenedor primerTenedor;
             Tenedor segundoTenedor;
             
-            // Lógica de Prevención de Deadlock por jerarquía de recursos
             if (id == NUM_FILOSOFOS - 1) { 
                 primerTenedor = tenedorDerecho;
                 segundoTenedor = tenedorIzquierdo;
@@ -364,12 +454,7 @@ public class CenaFilosofosPanel extends JPanel {
         }
     }
     
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN CON SEMÁFORO (EXISTENTE)
-    // ====================================================================
-    
     private static class FilosofoSemaforo implements Runnable {
-        // ... (Se mantiene igual) ...
         private final int id;
         private final Tenedor tenedorIzquierdo;
         private final Tenedor tenedorDerecho;

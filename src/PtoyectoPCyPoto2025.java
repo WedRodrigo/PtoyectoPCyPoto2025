@@ -28,32 +28,18 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private EscritorLectorPanel escritorLectorPanel;
     private FumadoresPanel fumadoresPanel;
 
-    private String tipoSincronizacion = "Mutex"; // Por defecto
+    private String tipoSincronizacion = "Monitores"; 
 
     PtoyectoPCyPoto2025() {
         setSize(1500, 800);
         setTitle("Proyecto Programación Concurrente y Paralela Otoño 2025");
         getContentPane().setBackground(Color.BLACK);
     
-        // Configurar layout para dividir la ventana en dos partes
         setLayout(new GridLayout(1, 2));
     
-        // Panel del tanque (izquierda)
-        // Se inicializará en mostrarProductorConsumidor()
-    
-        // Panel de dibujo (derecha)
         panelDibujo = new PanelDibujo();
         add(panelDibujo);
         
-        // Panel de la cena de los filósofos (no se agrega inicialmente)
-        
-        // Panel del barbero dormilón (no se agrega inicialmente)
-        
-        // Panel del problema de lectores-escritores (no se agrega inicialmente)
-        
-        // Panel de los fumadores (no se agrega inicialmente)
-    
-        // Configuración del menú
         barraMenu = new JMenuBar();
         menuArchivo = new JMenu("Archivo");
         itemNuevo = new JMenuItem("Nuevo");
@@ -82,7 +68,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         menuArchivo.add(itemCerrar);
         menuSincronizacion.add(itemMutex);
         menuSincronizacion.add(itemSemaforo);
-        menuSincronizacion.add(itemVariableCondicion); // <--- Habilitado
+        menuSincronizacion.add(itemVariableCondicion);
         menuSincronizacion.add(itemMonitores);
         menuSincronizacion.add(itemBarreras);
         menuProblemas.add(itemProductorConsumidor);
@@ -94,20 +80,14 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         // Agregar acción a los menú de Sincronización
         itemMutex.addActionListener(e -> setSincronizacion("Mutex"));
         itemSemaforo.addActionListener(e -> setSincronizacion("Semáforo"));
-        itemVariableCondicion.addActionListener(e -> setSincronizacion("Variable de Condición")); // <--- Habilitado
+        itemVariableCondicion.addActionListener(e -> setSincronizacion("Variable de Condición"));
+        itemMonitores.addActionListener(e -> setSincronizacion("Monitores")); 
 
-        // Agregar acción al menú de Cena de los Filósofos
+        // Agregar acción a los problemas
         itemCenaFilosofos.addActionListener(e -> mostrarCenaFilosofos());
-        
-        // Agregar acción al menú de Barbero Dormilón
         itemBarberoDormilon.addActionListener(e -> mostrarBarberoDormilon());
-        
-        // Agregar acción al menú de Fumadores
         itemFumadores.addActionListener(e -> mostrarFumadores());
-
-        // Agregar acción al menú de Lectores-Escritores
         itemLectoresEscritores.addActionListener(e -> mostrarEscritorLector());
-        
         itemProductorConsumidor.addActionListener(e -> mostrarProductorConsumidor());
 
         setJMenuBar(barraMenu);
@@ -115,12 +95,10 @@ public class PtoyectoPCyPoto2025 extends JFrame {
 
     private void setSincronizacion(String tipo) {
         this.tipoSincronizacion = tipo;
-        // Opcional: mostrar un mensaje o actualizar la UI para reflejar el cambio
         JOptionPane.showMessageDialog(this, "Sincronización cambiada a: " + tipo);
     }
 
     private void mostrarCenaFilosofos() {
-        // Eliminar los paneles actuales y agregar los correspondientes
         getContentPane().removeAll();
         cenaFilosofosPanel = new CenaFilosofosPanel(tipoSincronizacion);
         add(cenaFilosofosPanel);
@@ -130,7 +108,6 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     }
     
     private void mostrarBarberoDormilon() {
-        // Eliminar los paneles actuales y agregar los correspondientes
         getContentPane().removeAll();
         barberoDormilonPanel = new BarberoDormilonPanel(tipoSincronizacion);
         add(barberoDormilonPanel);
@@ -140,7 +117,6 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     }
     
     private void mostrarEscritorLector() {
-        // Eliminar los paneles actuales y agregar los correspondientes
         getContentPane().removeAll();
         escritorLectorPanel = new EscritorLectorPanel(tipoSincronizacion);
         add(escritorLectorPanel);
@@ -150,7 +126,6 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     }
 
     private void mostrarFumadores() {
-        // Eliminar los paneles actuales y agregar los correspondientes
         getContentPane().removeAll();
         fumadoresPanel = new FumadoresPanel(tipoSincronizacion);
         add(fumadoresPanel);
@@ -160,9 +135,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     }
     
     private void mostrarProductorConsumidor() {
-        // Eliminar los paneles actuales y agregar los correspondientes
         getContentPane().removeAll();
-        // Muestra el TanquePanel para Productor-Consumidor
         tanquePanel = new TanquePanel(tipoSincronizacion);
         add(tanquePanel); 
         add(panelDibujo);
