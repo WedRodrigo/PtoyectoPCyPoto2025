@@ -82,7 +82,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         menuArchivo.add(itemCerrar);
         menuSincronizacion.add(itemMutex);
         menuSincronizacion.add(itemSemaforo);
-        menuSincronizacion.add(itemVariableCondicion);
+        menuSincronizacion.add(itemVariableCondicion); // <--- Habilitado
         menuSincronizacion.add(itemMonitores);
         menuSincronizacion.add(itemBarreras);
         menuProblemas.add(itemProductorConsumidor);
@@ -94,7 +94,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         // Agregar acción a los menú de Sincronización
         itemMutex.addActionListener(e -> setSincronizacion("Mutex"));
         itemSemaforo.addActionListener(e -> setSincronizacion("Semáforo"));
-        // Aquí se agregarán los demás en el futuro
+        itemVariableCondicion.addActionListener(e -> setSincronizacion("Variable de Condición")); // <--- Habilitado
 
         // Agregar acción al menú de Cena de los Filósofos
         itemCenaFilosofos.addActionListener(e -> mostrarCenaFilosofos());

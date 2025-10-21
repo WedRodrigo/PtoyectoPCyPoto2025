@@ -1,8 +1,9 @@
 import javax.swing.*;
 import java.awt.*;
-import java.util.concurrent.locks.ReentrantLock; // Solo Mutex
-import java.util.concurrent.Semaphore; // Añadido para semáforos
+import java.util.concurrent.locks.ReentrantLock; 
+import java.util.concurrent.Semaphore; 
 import java.util.Random;
+import java.util.concurrent.locks.Condition; // Nuevo
 
 public class FumadoresPanel extends JPanel {
     // Definición de recursos
@@ -17,39 +18,34 @@ public class FumadoresPanel extends JPanel {
     private volatile boolean[] fumadorFumando = {false, false, false}; // F1, F2, F3
     private volatile String agentePuso = "Esperando";
 
-    private final MonitorMesa monitorMesa;
-    private MonitorMesaSemaforo monitorMesaSemaforo; // No final
+    private final MonitorMesa monitorMesaMutex;
+    private MonitorMesaSemaforo monitorMesaSemaforo; 
+    private MonitorMesaCondicion monitorMesaCondicion; // Nuevo
     private final String tipoSincronizacion;
     
     public FumadoresPanel(String tipoSincronizacion) {
         this.tipoSincronizacion = tipoSincronizacion;
         setPreferredSize(new Dimension(800, 600));
-        setBackground(new Color(240, 240, 240)); // Fondo gris claro
+        setBackground(new Color(240, 240, 240)); 
         
-        if ("Mutex".equals(tipoSincronizacion)) {
-            monitorMesa = new MonitorMesa(this);
-            monitorMesaSemaforo = null;
-        } else {
-            monitorMesa = null;
+        if ("Semáforo".equals(tipoSincronizacion)) {
+            monitorMesaMutex = null;
+            monitorMesaCondicion = null;
             monitorMesaSemaforo = new MonitorMesaSemaforo(this);
+        } else if ("Variable de Condición".equals(tipoSincronizacion)) {
+            monitorMesaMutex = null;
+            monitorMesaSemaforo = null;
+            monitorMesaCondicion = new MonitorMesaCondicion(this);
+        } else { // Mutex
+            monitorMesaSemaforo = null;
+            monitorMesaCondicion = null;
+            monitorMesaMutex = new MonitorMesa(this);
         }
         iniciarSimulacion();
     }
 
     private void iniciarSimulacion() {
-        if ("Mutex".equals(tipoSincronizacion)) {
-            Agente agente = new Agente(monitorMesa);
-            new Thread(agente).start();
-            
-            Fumador fumador1 = new Fumador(0, TABACO, monitorMesa);
-            new Thread(fumador1).start();
-            
-            Fumador fumador2 = new Fumador(1, PAPEL, monitorMesa);
-            new Thread(fumador2).start();
-            
-            Fumador fumador3 = new Fumador(2, FOSFOROS, monitorMesa);
-            new Thread(fumador3).start();
-        } else {
+        if ("Semáforo".equals(tipoSincronizacion)) {
             AgenteSemaforo agente = new AgenteSemaforo(monitorMesaSemaforo);
             new Thread(agente).start();
             
@@ -60,6 +56,30 @@ public class FumadoresPanel extends JPanel {
             new Thread(fumador2).start();
             
             FumadorSemaforo fumador3 = new FumadorSemaforo(2, FOSFOROS, monitorMesaSemaforo);
+            new Thread(fumador3).start();
+        } else if ("Variable de Condición".equals(tipoSincronizacion)) {
+            AgenteCondicion agente = new AgenteCondicion(monitorMesaCondicion);
+            new Thread(agente).start();
+            
+            FumadorCondicion fumador1 = new FumadorCondicion(0, TABACO, monitorMesaCondicion);
+            new Thread(fumador1).start();
+            
+            FumadorCondicion fumador2 = new FumadorCondicion(1, PAPEL, monitorMesaCondicion);
+            new Thread(fumador2).start();
+            
+            FumadorCondicion fumador3 = new FumadorCondicion(2, FOSFOROS, monitorMesaCondicion);
+            new Thread(fumador3).start();
+        } else { // Mutex
+            Agente agente = new Agente(monitorMesaMutex);
+            new Thread(agente).start();
+            
+            Fumador fumador1 = new Fumador(0, TABACO, monitorMesaMutex);
+            new Thread(fumador1).start();
+            
+            Fumador fumador2 = new Fumador(1, PAPEL, monitorMesaMutex);
+            new Thread(fumador2).start();
+            
+            Fumador fumador3 = new Fumador(2, FOSFOROS, monitorMesaMutex);
             new Thread(fumador3).start();
         }
     }
@@ -233,10 +253,131 @@ public class FumadoresPanel extends JPanel {
     }
 
     // ====================================================================
-    // CLASES DE SINCRONIZACIÓN (Mutex)
+    // CLASES DE SINCRONIZACIÓN (Variable de Condición - Monitor)
+    // ====================================================================
+
+    private class MonitorMesaCondicion {
+        private final ReentrantLock lock = new ReentrantLock(); 
+        private final Condition agenteCond = lock.newCondition(); // Agente espera a que la mesa esté vacía
+        private final Condition[] fumadorCond = {lock.newCondition(), lock.newCondition(), lock.newCondition()}; // Un Condition para cada fumador
+        
+        private boolean[] disponibles = new boolean[3];
+        private final FumadoresPanel panel;
+
+        public MonitorMesaCondicion(FumadoresPanel panel) {
+            this.panel = panel;
+        }
+
+        public void ponerIngredientes() throws InterruptedException {
+            lock.lock(); 
+            try {
+                // Espera a que la mesa esté vacía 
+                while (disponibles[TABACO] || disponibles[PAPEL] || disponibles[FOSFOROS]) {
+                    agenteCond.await();
+                }
+                
+                int faltante = random.nextInt(3); 
+                int ingr1 = (faltante + 1) % 3;
+                int ingr2 = (faltante + 2) % 3;
+                
+                disponibles[ingr1] = true;
+                disponibles[ingr2] = true;
+                
+                panel.actualizarEstado(disponibles, panel.fumadorFumando, 
+                                      nombresIngredientes[ingr1] + " y " + nombresIngredientes[ingr2]);
+                
+                fumadorCond[faltante].signal(); // Despierta al fumador que necesita esos ingredientes
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        public void tomarIngredientes(int idFumador, int faltante) throws InterruptedException {
+            lock.lock(); 
+            try {
+                int ingr1 = (faltante + 1) % 3;
+                int ingr2 = (faltante + 2) % 3;
+                
+                // Espera hasta que sus dos ingredientes estén en la mesa
+                while (!disponibles[ingr1] || !disponibles[ingr2]) {
+                    fumadorCond[faltante].await();
+                }
+
+                disponibles[ingr1] = false;
+                disponibles[ingr2] = false;
+                
+                panel.fumadorFumando[idFumador] = true; 
+                panel.actualizarEstado(disponibles, panel.fumadorFumando, "Mesa vacía");
+                
+            } finally {
+                lock.unlock(); 
+            }
+        }
+        
+        public void terminarFumar(int idFumador) {
+            lock.lock();
+            try {
+                panel.fumadorFumando[idFumador] = false;
+                panel.actualizarEstado(disponibles, panel.fumadorFumando, "Esperando");
+                agenteCond.signal(); // Despierta al agente para que ponga nuevos ingredientes
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    private class AgenteCondicion implements Runnable {
+        private final MonitorMesaCondicion monitor;
+
+        public AgenteCondicion(MonitorMesaCondicion monitor) {
+            this.monitor = monitor;
+        }
+
+        @Override
+        public void run() {
+            try {
+                while (true) {
+                    monitor.ponerIngredientes();
+                    Thread.sleep(random.nextInt(2000) + 1000);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private class FumadorCondicion implements Runnable {
+        private final int id;
+        private final int ingredienteFaltante;
+        private final MonitorMesaCondicion monitor;
+
+        public FumadorCondicion(int id, int ingredienteFaltante, MonitorMesaCondicion monitor) {
+            this.id = id;
+            this.ingredienteFaltante = ingredienteFaltante;
+            this.monitor = monitor;
+        }
+
+        @Override
+        public void run() {
+            try {
+                while (true) {
+                    monitor.tomarIngredientes(id, ingredienteFaltante);
+                    // Simula fumar
+                    Thread.sleep(random.nextInt(3000) + 2000);
+                    monitor.terminarFumar(id);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+    
+    // ====================================================================
+    // CLASES DE SINCRONIZACIÓN (Mutex - Existente)
     // ====================================================================
 
     private class MonitorMesa {
+        // ... (Se mantiene igual) ...
         private final ReentrantLock mutex = new ReentrantLock(); 
         private boolean[] disponibles = new boolean[3]; 
         private final FumadoresPanel panel;
@@ -249,7 +390,7 @@ public class FumadoresPanel extends JPanel {
             mutex.lock(); 
             try {
                 while (disponibles[TABACO] || disponibles[PAPEL] || disponibles[FOSFOROS]) {
-                    mutex.unlock(); // Liberar para no bloquear
+                    mutex.unlock(); 
                     Thread.sleep(100); 
                     mutex.lock();
                 }
@@ -303,6 +444,7 @@ public class FumadoresPanel extends JPanel {
     }
 
     private class Agente implements Runnable {
+        // ... (Se mantiene igual) ...
         private final MonitorMesa monitorMesa;
 
         public Agente(MonitorMesa monitorMesa) {
@@ -323,6 +465,7 @@ public class FumadoresPanel extends JPanel {
     }
 
     private class Fumador implements Runnable {
+        // ... (Se mantiene igual) ...
         private final int id;
         private final int ingredienteFaltante;
         private final MonitorMesa monitorMesa;
@@ -352,10 +495,11 @@ public class FumadoresPanel extends JPanel {
     }
 
     // ====================================================================
-    // CLASES DE SINCRONIZACIÓN (Semáforos)
+    // CLASES DE SINCRONIZACIÓN (Semáforos - Existente)
     // ====================================================================
 
     private class MonitorMesaSemaforo {
+        // ... (Se mantiene igual) ...
         private final Semaphore agenteSemaforo = new Semaphore(1);
         private final Semaphore[] fumadorSemaforo = {new Semaphore(0), new Semaphore(0), new Semaphore(0)};
         private final boolean[] ingredientesMesa = new boolean[3];
@@ -399,6 +543,7 @@ public class FumadoresPanel extends JPanel {
     }
 
     private class AgenteSemaforo implements Runnable {
+        // ... (Se mantiene igual) ...
         private final MonitorMesaSemaforo monitor;
 
         public AgenteSemaforo(MonitorMesaSemaforo monitor) {
@@ -419,6 +564,7 @@ public class FumadoresPanel extends JPanel {
     }
 
     private class FumadorSemaforo implements Runnable {
+        // ... (Se mantiene igual) ...
         private final int id;
         private final int faltante;
         private final MonitorMesaSemaforo monitor;

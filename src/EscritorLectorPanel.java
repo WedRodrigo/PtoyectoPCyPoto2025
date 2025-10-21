@@ -6,6 +6,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.Condition; // Nuevo
 
 public class EscritorLectorPanel extends JPanel {
     private static final int ANCHO_PIZARRA = 400;
@@ -24,6 +25,7 @@ public class EscritorLectorPanel extends JPanel {
     
     private MonitorPizarra monitorPizarraMutex;
     private MonitorPizarraSemaforo monitorPizarraSemaforo;
+    private MonitorPizarraCondicion monitorPizarraCondicion; // Nuevo
 
     public EscritorLectorPanel(String tipoSincronizacion) {
         this.tipoSincronizacion = tipoSincronizacion;
@@ -31,6 +33,8 @@ public class EscritorLectorPanel extends JPanel {
         
         if ("Semáforo".equals(tipoSincronizacion)) {
             monitorPizarraSemaforo = new MonitorPizarraSemaforo(this);
+        } else if ("Variable de Condición".equals(tipoSincronizacion)) {
+            monitorPizarraCondicion = new MonitorPizarraCondicion(this);
         } else {
             monitorPizarraMutex = new MonitorPizarra(this);
         }
@@ -43,17 +47,21 @@ public class EscritorLectorPanel extends JPanel {
         
         Runnable generadorEscritores = () -> {
             if ("Semáforo".equals(tipoSincronizacion)) {
-                new Thread(new Escritor(null, monitorPizarraSemaforo, this)).start();
+                new Thread(new Escritor(null, monitorPizarraSemaforo, null, this)).start();
+            } else if ("Variable de Condición".equals(tipoSincronizacion)) {
+                new Thread(new Escritor(null, null, monitorPizarraCondicion, this)).start();
             } else {
-                new Thread(new Escritor(monitorPizarraMutex, null, this)).start();
+                new Thread(new Escritor(monitorPizarraMutex, null, null, this)).start();
             }
         };
 
         Runnable generadorLectores = () -> {
             if ("Semáforo".equals(tipoSincronizacion)) {
-                new Thread(new Lector(null, monitorPizarraSemaforo, this)).start();
+                new Thread(new Lector(null, monitorPizarraSemaforo, null, this)).start();
+            } else if ("Variable de Condición".equals(tipoSincronizacion)) {
+                new Thread(new Lector(null, null, monitorPizarraCondicion, this)).start();
             } else {
-                new Thread(new Lector(monitorPizarraMutex, null, this)).start();
+                new Thread(new Lector(monitorPizarraMutex, null, null, this)).start();
             }
         };
 
@@ -151,7 +159,101 @@ public class EscritorLectorPanel extends JPanel {
         g.drawString(etiqueta, x + TAMANO_PERSONA/2 - anchoTexto/2, centroCuerpoY + 50);
     }
     
+    // ====================================================================
+    // CLASES DE SINCRONIZACIÓN CON VARIABLE DE CONDICIÓN (Preferiencia a Escritores)
+    // ====================================================================
+    
+    private class MonitorPizarraCondicion {
+        private final ReentrantLock lock = new ReentrantLock(); 
+        private final Condition canRead = lock.newCondition(); 
+        private final Condition canWrite = lock.newCondition();
+        
+        private int readersActive = 0;
+        private int readersWaiting = 0;
+        private int writersActive = 0; // 0 o 1
+        private int writersWaiting = 0;
+        private final EscritorLectorPanel panel;
+
+        public MonitorPizarraCondicion(EscritorLectorPanel panel) {
+            this.panel = panel;
+        }
+
+        public void iniciarLectura() throws InterruptedException {
+            lock.lock();
+            try {
+                readersWaiting++;
+                panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
+
+                // Espera si hay un escritor activo O si hay escritores en espera (Preferencia a Escritores)
+                while (writersActive > 0 || writersWaiting > 0) { 
+                    canRead.await();
+                }
+                
+                readersWaiting--;
+                readersActive++;
+            } finally {
+                lock.unlock();
+            }
+            panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
+        }
+
+        public void finalizarLectura() {
+            lock.lock();
+            try {
+                readersActive--;
+                if (readersActive == 0) {
+                    canWrite.signal(); // Si ya no hay lectores, despierta a un escritor
+                }
+            } finally {
+                lock.unlock();
+            }
+            panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
+        }
+
+        public void iniciarEscritura() throws InterruptedException {
+            lock.lock();
+            try {
+                writersWaiting++;
+                panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
+
+                // Espera si hay lectores o escritor activo
+                while (readersActive > 0 || writersActive > 0) { 
+                    canWrite.await();
+                }
+
+                writersWaiting--;
+                writersActive = 1;
+                panel.actualizarEstado(readersActive, true, readersWaiting, writersWaiting, "Limpiando pizarra...");
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        public void finalizarEscritura(String nuevoTexto) {
+            lock.lock();
+            try {
+                panel.textoPizarra = nuevoTexto;
+                writersActive = 0;
+
+                // Preferencia a Escritores: Intenta despertar primero a un escritor en espera
+                if (writersWaiting > 0) {
+                    canWrite.signal();
+                } else {
+                    canRead.signalAll(); // Si no hay escritores, despierta a todos los lectores
+                }
+            } finally {
+                lock.unlock();
+            }
+            panel.actualizarEstado(readersActive, false, readersWaiting, writersWaiting, nuevoTexto);
+        }
+    }
+    
+    // ====================================================================
+    // CLASES DE SINCRONIZACIÓN CON MUTEX (EXISTENTE)
+    // ====================================================================
+
     private class MonitorPizarra {
+        // ... (Se mantiene igual) ...
         private final ReentrantLock readCountLock = new ReentrantLock(); 
         private final ReentrantLock writeLock = new ReentrantLock(); 
         
@@ -214,8 +316,13 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, false, readersWaiting, writersWaiting, nuevoTexto);
         }
     }
+    
+    // ====================================================================
+    // CLASES DE SINCRONIZACIÓN CON SEMÁFORO (EXISTENTE)
+    // ====================================================================
 
     private class MonitorPizarraSemaforo {
+        // ... (Se mantiene igual) ...
         private final Semaphore mutex = new Semaphore(1);
         private final Semaphore wrt = new Semaphore(1);
         private int readCount = 0;
@@ -273,11 +380,13 @@ public class EscritorLectorPanel extends JPanel {
     private class Lector implements Runnable {
         private final MonitorPizarra monitorMutex;
         private final MonitorPizarraSemaforo monitorSemaforo;
+        private final MonitorPizarraCondicion monitorCondicion; // Nuevo
         private final EscritorLectorPanel panel;
 
-        public Lector(MonitorPizarra monitorMutex, MonitorPizarraSemaforo monitorSemaforo, EscritorLectorPanel panel) {
+        public Lector(MonitorPizarra monitorMutex, MonitorPizarraSemaforo monitorSemaforo, MonitorPizarraCondicion monitorCondicion, EscritorLectorPanel panel) {
             this.monitorMutex = monitorMutex;
             this.monitorSemaforo = monitorSemaforo;
+            this.monitorCondicion = monitorCondicion;
             this.panel = panel;
         }
 
@@ -288,6 +397,10 @@ public class EscritorLectorPanel extends JPanel {
                     monitorSemaforo.iniciarLectura();
                     Thread.sleep(random.nextInt(1000) + 500);
                     monitorSemaforo.finalizarLectura();
+                } else if (panel.tipoSincronizacion.equals("Variable de Condición")) {
+                    monitorCondicion.iniciarLectura();
+                    Thread.sleep(random.nextInt(1000) + 500);
+                    monitorCondicion.finalizarLectura();
                 } else {
                     monitorMutex.iniciarLectura();
                     Thread.sleep(random.nextInt(1000) + 500);
@@ -302,12 +415,14 @@ public class EscritorLectorPanel extends JPanel {
     private class Escritor implements Runnable {
         private final MonitorPizarra monitorMutex;
         private final MonitorPizarraSemaforo monitorSemaforo;
+        private final MonitorPizarraCondicion monitorCondicion; // Nuevo
         private final EscritorLectorPanel panel;
         private int contadorEscritura = 0;
 
-        public Escritor(MonitorPizarra monitorMutex, MonitorPizarraSemaforo monitorSemaforo, EscritorLectorPanel panel) {
+        public Escritor(MonitorPizarra monitorMutex, MonitorPizarraSemaforo monitorSemaforo, MonitorPizarraCondicion monitorCondicion, EscritorLectorPanel panel) {
             this.monitorMutex = monitorMutex;
             this.monitorSemaforo = monitorSemaforo;
+            this.monitorCondicion = monitorCondicion;
             this.panel = panel;
         }
 
@@ -321,6 +436,10 @@ public class EscritorLectorPanel extends JPanel {
                     monitorSemaforo.iniciarEscritura();
                     Thread.sleep(random.nextInt(1500) + 1000);
                     monitorSemaforo.finalizarEscritura(nuevoTexto);
+                } else if (panel.tipoSincronizacion.equals("Variable de Condición")) {
+                    monitorCondicion.iniciarEscritura();
+                    Thread.sleep(random.nextInt(1500) + 1000);
+                    monitorCondicion.finalizarEscritura(nuevoTexto);
                 } else {
                     monitorMutex.iniciarEscritura();
                     Thread.sleep(random.nextInt(1500) + 1000);

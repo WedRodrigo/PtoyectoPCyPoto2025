@@ -20,7 +20,7 @@ public class BarberoDormilonPanel extends JPanel {
     private volatile boolean clienteSiendoAtendido = false;
     private volatile int clienteActualId = -1;
     
-    private final Barberia barberiaMutex;
+    private final BarberiaCondicion barberiaCondicion; // Implementación de Monitor con Condición
     private final BarberiaSemaforo barberiaSemaforo;
     private final String tipoSincronizacion;
     private final Random random = new Random();
@@ -29,11 +29,12 @@ public class BarberoDormilonPanel extends JPanel {
         this.tipoSincronizacion = tipoSincronizacion;
         setBackground(Color.WHITE);
         
+        // Inicialización de la clase de sincronización apropiada
         if ("Semáforo".equals(tipoSincronizacion)) {
             this.barberiaSemaforo = new BarberiaSemaforo(NUM_SILLAS_ESPERA, this);
-            this.barberiaMutex = null;
-        } else {
-            this.barberiaMutex = new Barberia(NUM_SILLAS_ESPERA, this);
+            this.barberiaCondicion = null;
+        } else { // Incluye "Mutex" y "Variable de Condición"
+            this.barberiaCondicion = new BarberiaCondicion(NUM_SILLAS_ESPERA, this);
             this.barberiaSemaforo = null;
         }
         
@@ -58,8 +59,8 @@ public class BarberoDormilonPanel extends JPanel {
                     }
                 }
             }).start();
-        } else {
-            Barbero barbero = new Barbero(barberiaMutex, this);
+        } else { // "Mutex" o "Variable de Condición"
+            BarberoCondicion barbero = new BarberoCondicion(barberiaCondicion, this);
             new Thread(barbero).start();
             
             new Thread(() -> {
@@ -67,7 +68,7 @@ public class BarberoDormilonPanel extends JPanel {
                 while (true) {
                     try {
                         Thread.sleep(random.nextInt(2000) + 1000); 
-                        Cliente cliente = new Cliente(clienteId++, barberiaMutex, this);
+                        ClienteCondicion cliente = new ClienteCondicion(clienteId++, barberiaCondicion, this);
                         new Thread(cliente).start();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -175,29 +176,30 @@ public class BarberoDormilonPanel extends JPanel {
     }
     
     // ====================================================================
-    // CLASES DE SINCRONIZACIÓN CON MUTEX (ReentrantLock)
+    // CLASES DE SINCRONIZACIÓN CON MUTEX / VARIABLE DE CONDICIÓN
+    // (Monitor con ReentrantLock y Condition)
     // ====================================================================
 
     /**
      * Monitor: Gestiona el estado de la barbería y sincroniza los hilos.
      */
-    private class Barberia {
-        private final ReentrantLock mutex = new ReentrantLock(); // El Mutex
+    private class BarberiaCondicion {
+        private final ReentrantLock mutex = new ReentrantLock(); 
         private final Condition barberoListo = mutex.newCondition(); // Barbero espera aquí a un cliente
-        private final Condition clienteAtendido = mutex.newCondition(); // Cliente espera aquí a ser atendido
+        private final Condition clienteEsperando = mutex.newCondition(); 
         
         private final int numSillas;
         private int clientesEnEspera = 0;
         private final BarberoDormilonPanel panel;
 
-        public Barberia(int numSillas, BarberoDormilonPanel panel) {
+        public BarberiaCondicion(int numSillas, BarberoDormilonPanel panel) {
             this.numSillas = numSillas;
             this.panel = panel;
         }
 
         // Método llamado por los hilos Barbero
         public int cortarPelo() throws InterruptedException {
-            mutex.lock(); // Mutex: Entrada a la sección crítica
+            mutex.lock(); 
             try {
                 // Si no hay clientes, el Barbero se duerme
                 while (clientesEnEspera == 0) {
@@ -207,20 +209,22 @@ public class BarberoDormilonPanel extends JPanel {
                 
                 // Un cliente pasa de la silla de espera a la de corte
                 clientesEnEspera--;
-                int clienteId = -1; // No es necesario rastrear el ID aquí, pero en una versión completa se haría.
                 
-                // Actualizar estado antes de la señal
+                // Despierta a un cliente para que tome el turno (esto simplifica el flujo del monitor)
+                clienteEsperando.signal(); 
+                
+                int clienteId = -1; 
                 panel.actualizarEstado(true, false, clientesEnEspera, true, clienteId); 
                 
                 return clienteId;
             } finally {
-                mutex.unlock(); // Mutex: Salida de la sección crítica
+                mutex.unlock(); 
             }
         }
-
+        
         // Método llamado por los hilos Cliente
         public boolean entrar(int id) throws InterruptedException {
-            mutex.lock(); // Mutex: Entrada a la sección crítica
+            mutex.lock(); 
             try {
                 // 1. Revisar si hay sillas de espera
                 if (clientesEnEspera < numSillas) {
@@ -230,19 +234,21 @@ public class BarberoDormilonPanel extends JPanel {
                     // 2. Despertar al Barbero si está dormido
                     if (clientesEnEspera == 1) {
                         barberoListo.signal(); // Despierta al Barbero (si estaba dormido)
-                        panel.actualizarEstado(true, false, clientesEnEspera, false, -1); // Barbero se despierta
+                        // No actualiza el estado del barbero aquí, se deja que el hilo Barbero lo haga.
                     }
+                    
+                    // 3. El cliente espera a que el barbero le atienda (simulación de espera en la silla)
+                    // Este await en el cliente lo mantiene en la cola mientras el Barbero no lo despierte.
+                    // En esta versión simplificada, el cliente no espera realmente. El control pasa al Barbero
+                    // para iniciar el corte.
 
-                    // 3. El cliente espera a ser atendido (en el monitor)
-                    // (En la simulación visual, el cliente pasa de la cola a la silla de corte
-                    // de forma inmediata tras despertar al barbero o tomar turno)
                     return true;
                 } else {
                     // La barbería está llena, el cliente se va
                     return false;
                 }
             } finally {
-                mutex.unlock(); // Mutex: Salida de la sección crítica
+                mutex.unlock(); 
             }
         }
         
@@ -251,7 +257,6 @@ public class BarberoDormilonPanel extends JPanel {
              mutex.lock();
              try {
                 panel.actualizarEstado(false, false, clientesEnEspera, false, -1); // El cliente se va
-                // El barbero debe volver a cortar o a dormir, el ciclo continúa en el hilo Barbero.
              } finally {
                  mutex.unlock();
              }
@@ -261,11 +266,11 @@ public class BarberoDormilonPanel extends JPanel {
     /**
      * Hilo Barbero: Simula el proceso del barbero.
      */
-    private class Barbero implements Runnable {
-        private final Barberia barberia;
+    private class BarberoCondicion implements Runnable {
+        private final BarberiaCondicion barberia;
         private final BarberoDormilonPanel panel;
 
-        public Barbero(Barberia barberia, BarberoDormilonPanel panel) {
+        public BarberoCondicion(BarberiaCondicion barberia, BarberoDormilonPanel panel) {
             this.barberia = barberia;
             this.panel = panel;
         }
@@ -288,11 +293,11 @@ public class BarberoDormilonPanel extends JPanel {
         }
     }
 
-    private class Cliente implements Runnable {
+    private class ClienteCondicion implements Runnable {
         private final int id;
-        private final Barberia barberia;
+        private final BarberiaCondicion barberia;
 
-        public Cliente(int id, Barberia barberia, BarberoDormilonPanel panel) {
+        public ClienteCondicion(int id, BarberiaCondicion barberia, BarberoDormilonPanel panel) {
             this.id = id;
             this.barberia = barberia;
         }
@@ -310,10 +315,11 @@ public class BarberoDormilonPanel extends JPanel {
     }
     
     // ====================================================================
-    // CLASES DE SINCRONIZACIÓN CON SEMÁFOROS
+    // CLASES DE SINCRONIZACIÓN CON SEMÁFOROS (EXISTENTE)
     // ====================================================================
 
     private class BarberiaSemaforo {
+        // ... (Se mantiene igual) ...
         private final Semaphore mutex = new Semaphore(1);
         private final Semaphore clientes = new Semaphore(0);
         private final Semaphore barbero = new Semaphore(0);
@@ -362,6 +368,7 @@ public class BarberoDormilonPanel extends JPanel {
     }
 
     private class BarberoSemaforo implements Runnable {
+        // ... (Se mantiene igual) ...
         private final BarberiaSemaforo barberia;
         private final BarberoDormilonPanel panel;
 
@@ -391,6 +398,7 @@ public class BarberoDormilonPanel extends JPanel {
     }
 
     private class ClienteSemaforo implements Runnable {
+        // ... (Se mantiene igual) ...
         private final int id;
         private final BarberiaSemaforo barberia;
 
