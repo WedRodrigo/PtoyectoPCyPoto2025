@@ -7,6 +7,8 @@ import java.util.concurrent.locks.Condition;
 
 public class TanquePanel extends JPanel {
     private int nivelAgua = 0; // 0-100%
+    
+    // Mutex
     private final ReentrantLock mutex = new ReentrantLock();
     
     // Semáforos
@@ -19,16 +21,20 @@ public class TanquePanel extends JPanel {
     private final Condition notFullMonitores = lockMonitores.newCondition(); 
     private final Condition notEmptyMonitores = lockMonitores.newCondition(); 
     
-    // Variable de Condición (ReentrantLock / Condition - Estructuralmente separada)
+    // Variable de Condición
     private final ReentrantLock lockCondicion = new ReentrantLock(); 
     private final Condition notFullCondicion = lockCondicion.newCondition(); 
     private final Condition notEmptyCondicion = lockCondicion.newCondition(); 
     
     private JLabel porcentajeLabel;
     private final String tipoSincronizacion;
+    private final PanelGrafoDinamico panelGrafo; // <-- Referencia al grafo
 
-    public TanquePanel(String tipoSincronizacion) {
+    // Constructor modificado
+    public TanquePanel(String tipoSincronizacion, PanelGrafoDinamico panelGrafo) {
         this.tipoSincronizacion = tipoSincronizacion;
+        this.panelGrafo = panelGrafo; // <-- Guardar referencia
+        
         setBackground(Color.BLACK);
         setLayout(new BorderLayout());
 
@@ -110,16 +116,94 @@ public class TanquePanel extends JPanel {
         }
     }
     
-    // ====================================================================
-    // IMPLEMENTACIÓN MONITORES (ReentrantLock / Condition - Moderna)
-    // ====================================================================
+    // --- Implementaciones con actualización de grafo ---
+
+    private void producirMutex() {
+        panelGrafo.setFlechaSolicitud("P1", "R1");
+        mutex.lock();
+        panelGrafo.setFlechaAsignacion("P1", "R1");
+        try {
+            if (nivelAgua < 100) {
+                nivelAgua += 10;
+                if (nivelAgua > 100) nivelAgua = 100;
+                actualizarInterfaz();
+            }
+            Thread.sleep(50); // Simular tiempo en sección crítica
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.unlock();
+            panelGrafo.removerFlechas("P1", "R1");
+        }
+    }
+
+    private void consumirMutex() {
+        panelGrafo.setFlechaSolicitud("P2", "R1");
+        mutex.lock();
+        panelGrafo.setFlechaAsignacion("P2", "R1");
+        try {
+            if (nivelAgua > 0) {
+                nivelAgua -= 10;
+                if (nivelAgua < 0) nivelAgua = 0;
+                actualizarInterfaz();
+            }
+            Thread.sleep(50); // Simular tiempo en sección crítica
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.unlock();
+            panelGrafo.removerFlechas("P2", "R1");
+        }
+    }
+
+    private void producirSemaforo() {
+        try {
+            panelGrafo.setFlechaSolicitud("P1", "R1"); // Solicita "empty"
+            empty.acquire();
+            mutexSemaforo.acquire();
+            panelGrafo.setFlechaAsignacion("P1", "R1"); // Obtiene "mutex"
+            
+            if (nivelAgua < 100) {
+                nivelAgua += 10;
+                actualizarInterfaz();
+            }
+            
+            mutexSemaforo.release();
+            full.release();
+            panelGrafo.removerFlechas("P1", "R1"); // Libera "mutex"
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void consumirSemaforo() {
+        try {
+            panelGrafo.setFlechaSolicitud("P2", "R1"); // Solicita "full"
+            full.acquire();
+            mutexSemaforo.acquire();
+            panelGrafo.setFlechaAsignacion("P2", "R1"); // Obtiene "mutex"
+            
+            if (nivelAgua > 0) {
+                nivelAgua -= 10;
+                actualizarInterfaz();
+            }
+            
+            mutexSemaforo.release();
+            empty.release();
+            panelGrafo.removerFlechas("P2", "R1"); // Libera "mutex"
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
     private void producirMonitores() {
+        panelGrafo.setFlechaSolicitud("P1", "R1");
         lockMonitores.lock();
         try {
             while (nivelAgua == 100) {
                 notFullMonitores.await(); 
             }
+            panelGrafo.setFlechaAsignacion("P1", "R1");
             
             nivelAgua += 10;
             if (nivelAgua > 100) nivelAgua = 100;
@@ -130,15 +214,18 @@ public class TanquePanel extends JPanel {
             Thread.currentThread().interrupt();
         } finally {
             lockMonitores.unlock();
+            panelGrafo.removerFlechas("P1", "R1");
         }
     }
 
     private void consumirMonitores() {
+        panelGrafo.setFlechaSolicitud("P2", "R1");
         lockMonitores.lock();
         try {
             while (nivelAgua == 0) {
                 notEmptyMonitores.await(); 
             }
+            panelGrafo.setFlechaAsignacion("P2", "R1");
             
             nivelAgua -= 10;
             if (nivelAgua < 0) nivelAgua = 0;
@@ -149,19 +236,19 @@ public class TanquePanel extends JPanel {
             Thread.currentThread().interrupt();
         } finally {
             lockMonitores.unlock();
+            panelGrafo.removerFlechas("P2", "R1");
         }
     }
-    
-    // ====================================================================
-    // IMPLEMENTACIÓN VARIABLE DE CONDICIÓN (ReentrantLock / Condition - Separada)
-    // ====================================================================
 
+    // (produciCondicion y consumirCondicion son idénticos a Monitores, solo cambian las variables)
     private void producirCondicion() {
+        panelGrafo.setFlechaSolicitud("P1", "R1");
         lockCondicion.lock();
         try {
             while (nivelAgua == 100) {
                 notFullCondicion.await(); 
             }
+            panelGrafo.setFlechaAsignacion("P1", "R1");
             
             nivelAgua += 10;
             if (nivelAgua > 100) nivelAgua = 100;
@@ -172,15 +259,18 @@ public class TanquePanel extends JPanel {
             Thread.currentThread().interrupt();
         } finally {
             lockCondicion.unlock();
+            panelGrafo.removerFlechas("P1", "R1");
         }
     }
 
     private void consumirCondicion() {
+        panelGrafo.setFlechaSolicitud("P2", "R1");
         lockCondicion.lock();
         try {
             while (nivelAgua == 0) {
                 notEmptyCondicion.await(); 
             }
+            panelGrafo.setFlechaAsignacion("P2", "R1");
             
             nivelAgua -= 10;
             if (nivelAgua < 0) nivelAgua = 0;
@@ -191,69 +281,12 @@ public class TanquePanel extends JPanel {
             Thread.currentThread().interrupt();
         } finally {
             lockCondicion.unlock();
+            panelGrafo.removerFlechas("P2", "R1");
         }
     }
     
-    // ====================================================================
-    // Implementaciones Existentes (Mutex y Semáforo)
-    // ====================================================================
-
-    private void producirMutex() {
-        mutex.lock();
-        try {
-            if (nivelAgua < 100) {
-                nivelAgua += 10;
-                if (nivelAgua > 100) nivelAgua = 100;
-                actualizarInterfaz();
-            }
-        } finally {
-            mutex.unlock();
-        }
-    }
-
-    private void consumirMutex() {
-        mutex.lock();
-        try {
-            if (nivelAgua > 0) {
-                nivelAgua -= 10;
-                if (nivelAgua < 0) nivelAgua = 0;
-                actualizarInterfaz();
-            }
-        } finally {
-            mutex.unlock();
-        }
-    }
-
-    private void producirSemaforo() {
-        try {
-            empty.acquire();
-            mutexSemaforo.acquire();
-            if (nivelAgua < 100) {
-                nivelAgua += 10;
-                actualizarInterfaz();
-            }
-            mutexSemaforo.release();
-            full.release();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private void consumirSemaforo() {
-        try {
-            full.acquire();
-            mutexSemaforo.acquire();
-            if (nivelAgua > 0) {
-                nivelAgua -= 10;
-                actualizarInterfaz();
-            }
-            mutexSemaforo.release();
-            empty.release();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
+    // --- Métodos de UI (sin cambios) ---
+    
     private void actualizarInterfaz() { 
         SwingUtilities.invokeLater(() -> {
             porcentajeLabel.setText(nivelAgua + "%"); 

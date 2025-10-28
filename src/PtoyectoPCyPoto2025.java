@@ -22,13 +22,14 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private JMenuItem itemLectoresEscritores;
 
     private TanquePanel tanquePanel;
-    private PanelDibujo panelDibujo;
+    private PanelGrafoDinamico panelGrafo; // Modificado: PanelDibujo -> PanelGrafoDinamico
     private CenaFilosofosPanel cenaFilosofosPanel;
     private BarberoDormilonPanel barberoDormilonPanel;
     private EscritorLectorPanel escritorLectorPanel;
     private FumadoresPanel fumadoresPanel;
 
-    private String tipoSincronizacion = "Monitores"; 
+    private String tipoSincronizacion = "Monitores";
+    private JPanel panelSimulacionActivo = null; // Panel para la simulación
 
     PtoyectoPCyPoto2025() {
         setSize(1500, 800);
@@ -37,9 +38,18 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     
         setLayout(new GridLayout(1, 2));
     
-        panelDibujo = new PanelDibujo();
-        add(panelDibujo);
+        // 1. Inicializar el panel de grafo
+        panelGrafo = new PanelGrafoDinamico();
         
+        // 2. Inicializar un panel vacío para la simulación
+        panelSimulacionActivo = new JPanel();
+        panelSimulacionActivo.setBackground(new Color(30, 30, 30));
+        panelSimulacionActivo.add(new JLabel("Seleccione un problema del menú"));
+        
+        add(panelSimulacionActivo); // Panel izquierdo (simulación)
+        add(panelGrafo);           // Panel derecho (grafo)
+        
+        // ... (Configuración idéntica de la barra de menú) ...
         barraMenu = new JMenuBar();
         menuArchivo = new JMenu("Archivo");
         itemNuevo = new JMenuItem("Nuevo");
@@ -96,49 +106,74 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private void setSincronizacion(String tipo) {
         this.tipoSincronizacion = tipo;
         JOptionPane.showMessageDialog(this, "Sincronización cambiada a: " + tipo);
+        
+        // Reiniciar la simulación actual con la nueva sincronización
+        if (panelSimulacionActivo instanceof CenaFilosofosPanel) {
+            mostrarCenaFilosofos();
+        } else if (panelSimulacionActivo instanceof BarberoDormilonPanel) {
+            mostrarBarberoDormilon();
+        } else if (panelSimulacionActivo instanceof EscritorLectorPanel) {
+            mostrarEscritorLector();
+        } else if (panelSimulacionActivo instanceof FumadoresPanel) {
+            mostrarFumadores();
+        } else if (panelSimulacionActivo instanceof TanquePanel) {
+            mostrarProductorConsumidor();
+        }
     }
 
+    // Métodos "mostrar" actualizados para inyectar el panelGrafo
+    
     private void mostrarCenaFilosofos() {
         getContentPane().removeAll();
-        cenaFilosofosPanel = new CenaFilosofosPanel(tipoSincronizacion);
-        add(cenaFilosofosPanel);
-        add(panelDibujo);
+        panelGrafo.inicializarGrafo("CenaFilosofos"); // Prepara el grafo
+        cenaFilosofosPanel = new CenaFilosofosPanel(tipoSincronizacion, panelGrafo);
+        panelSimulacionActivo = cenaFilosofosPanel;
+        add(panelSimulacionActivo);
+        add(panelGrafo);
         revalidate();
         repaint();
     }
     
     private void mostrarBarberoDormilon() {
         getContentPane().removeAll();
-        barberoDormilonPanel = new BarberoDormilonPanel(tipoSincronizacion);
-        add(barberoDormilonPanel);
-        add(panelDibujo);
+        panelGrafo.inicializarGrafo("BarberoDormilon"); // Prepara el grafo
+        barberoDormilonPanel = new BarberoDormilonPanel(tipoSincronizacion, panelGrafo);
+        panelSimulacionActivo = barberoDormilonPanel;
+        add(panelSimulacionActivo);
+        add(panelGrafo);
         revalidate();
         repaint();
     }
     
     private void mostrarEscritorLector() {
         getContentPane().removeAll();
-        escritorLectorPanel = new EscritorLectorPanel(tipoSincronizacion);
-        add(escritorLectorPanel);
-        add(panelDibujo);
+        panelGrafo.inicializarGrafo("EscritorLector"); // Prepara el grafo
+        escritorLectorPanel = new EscritorLectorPanel(tipoSincronizacion, panelGrafo);
+        panelSimulacionActivo = escritorLectorPanel;
+        add(panelSimulacionActivo);
+        add(panelGrafo);
         revalidate();
         repaint();
     }
 
     private void mostrarFumadores() {
         getContentPane().removeAll();
-        fumadoresPanel = new FumadoresPanel(tipoSincronizacion);
-        add(fumadoresPanel);
-        add(panelDibujo);
+        panelGrafo.inicializarGrafo("Fumadores"); // Prepara el grafo
+        fumadoresPanel = new FumadoresPanel(tipoSincronizacion, panelGrafo);
+        panelSimulacionActivo = fumadoresPanel;
+        add(panelSimulacionActivo);
+        add(panelGrafo);
         revalidate();
         repaint();
     }
     
     private void mostrarProductorConsumidor() {
         getContentPane().removeAll();
-        tanquePanel = new TanquePanel(tipoSincronizacion);
-        add(tanquePanel); 
-        add(panelDibujo);
+        panelGrafo.inicializarGrafo("ProductorConsumidor"); // Prepara el grafo
+        tanquePanel = new TanquePanel(tipoSincronizacion, panelGrafo);
+        panelSimulacionActivo = tanquePanel;
+        add(panelSimulacionActivo); 
+        add(panelGrafo);
         revalidate();
         repaint();
     }

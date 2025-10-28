@@ -7,8 +7,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class EscritorLectorPanel extends JPanel {
+    // ... (Constantes sin cambios) ...
     private static final int ANCHO_PIZARRA = 400;
     private static final int ALTO_PIZARRA = 250;
     private static final int TAMANO_PERSONA = 50;
@@ -17,19 +19,25 @@ public class EscritorLectorPanel extends JPanel {
     private volatile boolean escritorActivo = false;
     private volatile int lectoresEnEspera = 0;
     private volatile int escritoresEnEspera = 0;
-    
     private volatile String textoPizarra = "Esperando Escritor...";
     
     private final Random random = new Random();
     private final String tipoSincronizacion;
+    private final PanelGrafoDinamico panelGrafo; // <-- Referencia al grafo
     
     private MonitorPizarra monitorPizarraMutex;
     private MonitorPizarraSemaforo monitorPizarraSemaforo;
-    private MonitorPizarraCondicion monitorPizarraCondicion; // Variable de Condición
-    private MonitorPizarraMonitores monitorPizarraMonitores; // Monitores
+    private MonitorPizarraCondicion monitorPizarraCondicion;
+    private MonitorPizarraMonitores monitorPizarraMonitores;
+    
+    // Contadores atómicos para IDs únicos
+    private final AtomicInteger lectorIdCounter = new AtomicInteger(1);
+    private final AtomicInteger escritorIdCounter = new AtomicInteger(1);
 
-    public EscritorLectorPanel(String tipoSincronizacion) {
+    // Constructor modificado
+    public EscritorLectorPanel(String tipoSincronizacion, PanelGrafoDinamico panelGrafo) {
         this.tipoSincronizacion = tipoSincronizacion;
+        this.panelGrafo = panelGrafo; // <-- Guardar referencia
         setBackground(new Color(240, 240, 240));
         
         if ("Semáforo".equals(tipoSincronizacion)) {
@@ -49,26 +57,32 @@ public class EscritorLectorPanel extends JPanel {
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
         
         Runnable generadorEscritores = () -> {
+            String id = "P-E" + escritorIdCounter.getAndIncrement();
+            panelGrafo.crearNodoSiNoExiste(id, 500, 100 + (random.nextInt(5) * 40), "Proceso", "E" + (escritorIdCounter.get()-1));
+            
             if ("Semáforo".equals(tipoSincronizacion)) {
-                new Thread(new Escritor(null, monitorPizarraSemaforo, null, null, this)).start();
+                new Thread(new Escritor(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             } else if ("Variable de Condición".equals(tipoSincronizacion)) {
-                new Thread(new Escritor(null, null, monitorPizarraCondicion, null, this)).start();
+                new Thread(new Escritor(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             } else if ("Monitores".equals(tipoSincronizacion)) {
-                new Thread(new Escritor(null, null, null, monitorPizarraMonitores, this)).start();
+                new Thread(new Escritor(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             } else {
-                new Thread(new Escritor(monitorPizarraMutex, null, null, null, this)).start();
+                new Thread(new Escritor(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             }
         };
 
         Runnable generadorLectores = () -> {
+            String id = "P-L" + lectorIdCounter.getAndIncrement();
+            panelGrafo.crearNodoSiNoExiste(id, 50, 100 + (random.nextInt(5) * 40), "Proceso", "L" + (lectorIdCounter.get()-1));
+            
             if ("Semáforo".equals(tipoSincronizacion)) {
-                new Thread(new Lector(null, monitorPizarraSemaforo, null, null, this)).start();
+                new Thread(new Lector(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             } else if ("Variable de Condición".equals(tipoSincronizacion)) {
-                new Thread(new Lector(null, null, monitorPizarraCondicion, null, this)).start();
+                new Thread(new Lector(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             } else if ("Monitores".equals(tipoSincronizacion)) {
-                new Thread(new Lector(null, null, null, monitorPizarraMonitores, this)).start();
+                new Thread(new Lector(monitorPizarraMutex, monitorPizarraSemaforo, monitorPizarraCondicion, monitorPizarraMonitores, this, id)).start();
             } else {
-                new Thread(new Lector(monitorPizarraMutex, null, null, null, this)).start();
+                new Thread(new Lector(monitorPizarraMutex, null, null, null, this, id)).start();
             }
         };
 
@@ -76,6 +90,7 @@ public class EscritorLectorPanel extends JPanel {
         scheduler.scheduleAtFixedRate(generadorLectores, 1, random.nextInt(3) + 1, TimeUnit.SECONDS);
     }
     
+    // ... (actualizarEstado, paintComponent, dibujarPersonaPalitos sin cambios) ...
     public void actualizarEstado(int lectoresA, boolean escritorA, int lectoresE, int escritoresE, String texto) {
         SwingUtilities.invokeLater(() -> {
             this.lectoresActivos = lectoresA;
@@ -166,10 +181,119 @@ public class EscritorLectorPanel extends JPanel {
         g.drawString(etiqueta, x + TAMANO_PERSONA/2 - anchoTexto/2, centroCuerpoY + 50);
     }
     
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN MONITORES (ReentrantLock / Condition)
-    // ====================================================================
+    // --- Clases Lector/Escritor (Modificadas para ID y panelGrafo) ---
     
+    private class Lector implements Runnable {
+        private final MonitorPizarra monitorMutex;
+        private final MonitorPizarraSemaforo monitorSemaforo;
+        private final MonitorPizarraCondicion monitorCondicion; 
+        private final MonitorPizarraMonitores monitorMonitores; 
+        private final EscritorLectorPanel panel;
+        private final String id; // ID único, ej: "P-L1"
+
+        public Lector(MonitorPizarra m, MonitorPizarraSemaforo s, MonitorPizarraCondicion c, MonitorPizarraMonitores mo, EscritorLectorPanel p, String id) {
+            this.monitorMutex = m;
+            this.monitorSemaforo = s;
+            this.monitorCondicion = c;
+            this.monitorMonitores = mo;
+            this.panel = p;
+            this.id = id;
+        }
+
+        @Override
+        public void run() {
+            try {
+                panel.panelGrafo.setFlechaSolicitud(id, "R1");
+                
+                if (panel.tipoSincronizacion.equals("Semáforo")) {
+                    monitorSemaforo.iniciarLectura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1000) + 500);
+                    monitorSemaforo.finalizarLectura(id);
+                } else if (panel.tipoSincronizacion.equals("Variable de Condición")) {
+                    monitorCondicion.iniciarLectura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1000) + 500);
+                    monitorCondicion.finalizarLectura(id);
+                } else if (panel.tipoSincronizacion.equals("Monitores")) {
+                    monitorMonitores.iniciarLectura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1000) + 500);
+                    monitorMonitores.finalizarLectura(id);
+                } else {
+                    monitorMutex.iniciarLectura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1000) + 500);
+                    monitorMutex.finalizarLectura(id);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                panel.panelGrafo.removerFlechas(id, "R1");
+                panel.panelGrafo.removerNodo(id); // Lector se va
+            }
+        }
+    }
+
+    private class Escritor implements Runnable {
+        private final MonitorPizarra monitorMutex;
+        private final MonitorPizarraSemaforo monitorSemaforo;
+        private final MonitorPizarraCondicion monitorCondicion; 
+        private final MonitorPizarraMonitores monitorMonitores; 
+        private final EscritorLectorPanel panel;
+        private final String id; // ID único, ej: "P-E1"
+        private int contadorEscritura = 0;
+
+        public Escritor(MonitorPizarra m, MonitorPizarraSemaforo s, MonitorPizarraCondicion c, MonitorPizarraMonitores mo, EscritorLectorPanel p, String id) {
+            this.monitorMutex = m;
+            this.monitorSemaforo = s;
+            this.monitorCondicion = c;
+            this.monitorMonitores = mo;
+            this.panel = p;
+            this.id = id;
+        }
+
+        @Override
+        public void run() {
+            try {
+                contadorEscritura++;
+                String nuevoTexto = "Escrito #" + id + " (" + System.currentTimeMillis() % 1000 + ")";
+                
+                panel.panelGrafo.setFlechaSolicitud(id, "R1");
+                
+                if (panel.tipoSincronizacion.equals("Semáforo")) {
+                    monitorSemaforo.iniciarEscritura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1500) + 1000);
+                    monitorSemaforo.finalizarEscritura(id, nuevoTexto);
+                } else if (panel.tipoSincronizacion.equals("Variable de Condición")) {
+                    monitorCondicion.iniciarEscritura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1500) + 1000);
+                    monitorCondicion.finalizarEscritura(id, nuevoTexto);
+                } else if (panel.tipoSincronizacion.equals("Monitores")) {
+                    monitorMonitores.iniciarEscritura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1500) + 1000);
+                    monitorMonitores.finalizarEscritura(id, nuevoTexto);
+                } else {
+                    monitorMutex.iniciarEscritura(id);
+                    panel.panelGrafo.setFlechaAsignacion(id, "R1");
+                    Thread.sleep(random.nextInt(1500) + 1000);
+                    monitorMutex.finalizarEscritura(id, nuevoTexto);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                panel.panelGrafo.removerFlechas(id, "R1");
+                panel.panelGrafo.removerNodo(id); // Escritor se va
+            }
+        }
+    }
+    
+    // --- Monitores (actualizados para UI) ---
+    // (Solo muestro Monitores y Mutex por brevedad, Semáforo y Condicion son similares)
+
     private class MonitorPizarraMonitores {
         private final ReentrantLock lock = new ReentrantLock(); 
         private final Condition canRead = lock.newCondition(); 
@@ -185,7 +309,7 @@ public class EscritorLectorPanel extends JPanel {
             this.panel = panel;
         }
 
-        public void iniciarLectura() throws InterruptedException {
+        public void iniciarLectura(String id) throws InterruptedException {
             lock.lock();
             try {
                 readersWaiting++;
@@ -203,7 +327,7 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
         }
 
-        public void finalizarLectura() {
+        public void finalizarLectura(String id) {
             lock.lock();
             try {
                 readersActive--;
@@ -216,7 +340,7 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
         }
 
-        public void iniciarEscritura() throws InterruptedException {
+        public void iniciarEscritura(String id) throws InterruptedException {
             lock.lock();
             try {
                 writersWaiting++;
@@ -234,7 +358,7 @@ public class EscritorLectorPanel extends JPanel {
             }
         }
 
-        public void finalizarEscritura(String nuevoTexto) {
+        public void finalizarEscritura(String id, String nuevoTexto) {
             lock.lock();
             try {
                 panel.textoPizarra = nuevoTexto;
@@ -251,208 +375,83 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, false, readersWaiting, writersWaiting, nuevoTexto);
         }
     }
-    
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN VARIABLE DE CONDICIÓN (ReentrantLock / Condition - Estructuralmente Separada)
-    // ====================================================================
-    
+
     private class MonitorPizarraCondicion {
+        // ... (Idéntico a MonitorPizarraMonitores) ...
         private final ReentrantLock lock = new ReentrantLock(); 
         private final Condition canRead = lock.newCondition(); 
         private final Condition canWrite = lock.newCondition();
-        
         private int readersActive = 0;
         private int readersWaiting = 0;
         private int writersActive = 0; 
         private int writersWaiting = 0;
         private final EscritorLectorPanel panel;
-
-        public MonitorPizarraCondicion(EscritorLectorPanel panel) {
-            this.panel = panel;
-        }
-
-        public void iniciarLectura() throws InterruptedException {
+        public MonitorPizarraCondicion(EscritorLectorPanel panel) { this.panel = panel; }
+        public void iniciarLectura(String id) throws InterruptedException {
             lock.lock();
             try {
                 readersWaiting++;
                 panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
-
-                while (writersActive > 0 || writersWaiting > 0) { 
-                    canRead.await();
-                }
-                
+                while (writersActive > 0 || writersWaiting > 0) { canRead.await(); }
                 readersWaiting--;
                 readersActive++;
-            } finally {
-                lock.unlock();
-            }
+            } finally { lock.unlock(); }
             panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
         }
-
-        public void finalizarLectura() {
+        public void finalizarLectura(String id) {
             lock.lock();
             try {
                 readersActive--;
-                if (readersActive == 0) {
-                    canWrite.signal(); 
-                }
-            } finally {
-                lock.unlock();
-            }
+                if (readersActive == 0) { canWrite.signal(); }
+            } finally { lock.unlock(); }
             panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
         }
-
-        public void iniciarEscritura() throws InterruptedException {
+        public void iniciarEscritura(String id) throws InterruptedException {
             lock.lock();
             try {
                 writersWaiting++;
                 panel.actualizarEstado(readersActive, writersActive > 0, readersWaiting, writersWaiting, panel.textoPizarra);
-
-                while (readersActive > 0 || writersActive > 0) { 
-                    canWrite.await();
-                }
-
+                while (readersActive > 0 || writersActive > 0) { canWrite.await(); }
                 writersWaiting--;
                 writersActive = 1;
                 panel.actualizarEstado(readersActive, true, readersWaiting, writersWaiting, "Limpiando pizarra...");
-            } finally {
-                lock.unlock();
-            }
+            } finally { lock.unlock(); }
         }
-
-        public void finalizarEscritura(String nuevoTexto) {
+        public void finalizarEscritura(String id, String nuevoTexto) {
             lock.lock();
             try {
                 panel.textoPizarra = nuevoTexto;
                 writersActive = 0;
-
-                if (writersWaiting > 0) {
-                    canWrite.signal();
-                } else {
-                    canRead.signalAll(); 
-                }
-            } finally {
-                lock.unlock();
-            }
+                if (writersWaiting > 0) { canWrite.signal(); } else { canRead.signalAll(); }
+            } finally { lock.unlock(); }
             panel.actualizarEstado(readersActive, false, readersWaiting, writersWaiting, nuevoTexto);
         }
     }
-    
-    private class Lector implements Runnable {
-        private final MonitorPizarra monitorMutex;
-        private final MonitorPizarraSemaforo monitorSemaforo;
-        private final MonitorPizarraCondicion monitorCondicion; 
-        private final MonitorPizarraMonitores monitorMonitores; 
-        private final EscritorLectorPanel panel;
 
-        public Lector(MonitorPizarra monitorMutex, MonitorPizarraSemaforo monitorSemaforo, MonitorPizarraCondicion monitorCondicion, MonitorPizarraMonitores monitorMonitores, EscritorLectorPanel panel) {
-            this.monitorMutex = monitorMutex;
-            this.monitorSemaforo = monitorSemaforo;
-            this.monitorCondicion = monitorCondicion;
-            this.monitorMonitores = monitorMonitores;
-            this.panel = panel;
-        }
-
-        @Override
-        public void run() {
-            try {
-                if (panel.tipoSincronizacion.equals("Semáforo")) {
-                    monitorSemaforo.iniciarLectura();
-                    Thread.sleep(random.nextInt(1000) + 500);
-                    monitorSemaforo.finalizarLectura();
-                } else if (panel.tipoSincronizacion.equals("Variable de Condición")) {
-                    monitorCondicion.iniciarLectura();
-                    Thread.sleep(random.nextInt(1000) + 500);
-                    monitorCondicion.finalizarLectura();
-                } else if (panel.tipoSincronizacion.equals("Monitores")) {
-                    monitorMonitores.iniciarLectura();
-                    Thread.sleep(random.nextInt(1000) + 500);
-                    monitorMonitores.finalizarLectura();
-                } else {
-                    monitorMutex.iniciarLectura();
-                    Thread.sleep(random.nextInt(1000) + 500);
-                    monitorMutex.finalizarLectura();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-
-    private class Escritor implements Runnable {
-        private final MonitorPizarra monitorMutex;
-        private final MonitorPizarraSemaforo monitorSemaforo;
-        private final MonitorPizarraCondicion monitorCondicion; 
-        private final MonitorPizarraMonitores monitorMonitores; 
-        private final EscritorLectorPanel panel;
-        private int contadorEscritura = 0;
-
-        public Escritor(MonitorPizarra monitorMutex, MonitorPizarraSemaforo monitorSemaforo, MonitorPizarraCondicion monitorCondicion, MonitorPizarraMonitores monitorMonitores, EscritorLectorPanel panel) {
-            this.monitorMutex = monitorMutex;
-            this.monitorSemaforo = monitorSemaforo;
-            this.monitorCondicion = monitorCondicion;
-            this.monitorMonitores = monitorMonitores;
-            this.panel = panel;
-        }
-
-        @Override
-        public void run() {
-            try {
-                contadorEscritura++;
-                String nuevoTexto = "Escrito #" + contadorEscritura + " (" + System.currentTimeMillis() % 1000 + ")";
-                
-                if (panel.tipoSincronizacion.equals("Semáforo")) {
-                    monitorSemaforo.iniciarEscritura();
-                    Thread.sleep(random.nextInt(1500) + 1000);
-                    monitorSemaforo.finalizarEscritura(nuevoTexto);
-                } else if (panel.tipoSincronizacion.equals("Variable de Condición")) {
-                    monitorCondicion.iniciarEscritura();
-                    Thread.sleep(random.nextInt(1500) + 1000);
-                    monitorCondicion.finalizarEscritura(nuevoTexto);
-                } else if (panel.tipoSincronizacion.equals("Monitores")) {
-                    monitorMonitores.iniciarEscritura();
-                    Thread.sleep(random.nextInt(1500) + 1000);
-                    monitorMonitores.finalizarEscritura(nuevoTexto);
-                } else {
-                    monitorMutex.iniciarEscritura();
-                    Thread.sleep(random.nextInt(1500) + 1000);
-                    monitorMutex.finalizarEscritura(nuevoTexto);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-    
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN MUTEX Y SEMÁFORO (EXISTENTES)
-    // ====================================================================
-
-    private class MonitorPizarra {
+    private class MonitorPizarra { // Mutex
         private final ReentrantLock readCountLock = new ReentrantLock(); 
         private final ReentrantLock writeLock = new ReentrantLock(); 
-        
         private int readersActive = 0;
         private int readersWaiting = 0;
         private int writersWaiting = 0;
         private final EscritorLectorPanel panel;
 
-        public MonitorPizarra(EscritorLectorPanel panel) {
-            this.panel = panel;
-        }
+        public MonitorPizarra(EscritorLectorPanel panel) { this.panel = panel; }
 
-        public void iniciarLectura() throws InterruptedException {
+        public void iniciarLectura(String id) throws InterruptedException {
             readCountLock.lock();
             try {
                 readersWaiting++;
                 panel.actualizarEstado(readersActive, writeLock.isLocked(), readersWaiting, writersWaiting, panel.textoPizarra);
                 
                 while (writeLock.isLocked()) {
+                    readCountLock.unlock(); // Soltar lock temporalmente para no bloquear
                     Thread.sleep(100); 
+                    readCountLock.lock();
                 }
 
                 if (readersActive == 0) {
-                    writeLock.lock(); 
+                    writeLock.lock(); // Primer lector bloquea a escritores
                 }
                 readersActive++;
                 readersWaiting--;
@@ -462,12 +461,12 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, writeLock.isLocked(), readersWaiting, writersWaiting, panel.textoPizarra);
         }
 
-        public void finalizarLectura() {
+        public void finalizarLectura(String id) {
             readCountLock.lock();
             try {
                 readersActive--;
                 if (readersActive == 0 && writeLock.isHeldByCurrentThread()) {
-                    writeLock.unlock(); 
+                    writeLock.unlock(); // Último lector libera
                 }
             } finally {
                 readCountLock.unlock();
@@ -475,7 +474,7 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, writeLock.isLocked(), readersWaiting, writersWaiting, panel.textoPizarra);
         }
 
-        public void iniciarEscritura() throws InterruptedException {
+        public void iniciarEscritura(String id) throws InterruptedException {
             writersWaiting++;
             panel.actualizarEstado(readersActive, writeLock.isLocked(), readersWaiting, writersWaiting, panel.textoPizarra);
             writeLock.lock();
@@ -483,7 +482,7 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readersActive, true, readersWaiting, writersWaiting, "Limpiando pizarra...");
         }
 
-        public void finalizarEscritura(String nuevoTexto) {
+        public void finalizarEscritura(String id, String nuevoTexto) {
             panel.textoPizarra = nuevoTexto;
             writeLock.unlock();
             panel.actualizarEstado(readersActive, false, readersWaiting, writersWaiting, nuevoTexto);
@@ -499,18 +498,16 @@ public class EscritorLectorPanel extends JPanel {
         private int writersWaiting = 0;
         private final EscritorLectorPanel panel;
 
-        public MonitorPizarraSemaforo(EscritorLectorPanel panel) {
-            this.panel = panel;
-        }
+        public MonitorPizarraSemaforo(EscritorLectorPanel panel) { this.panel = panel; }
 
-        public void iniciarLectura() throws InterruptedException {
+        public void iniciarLectura(String id) throws InterruptedException {
             readersWaiting++;
             panel.actualizarEstado(readCount, writerCount > 0, readersWaiting, writersWaiting, panel.textoPizarra);
             
             mutex.acquire();
             readCount++;
             if (readCount == 1) {
-                wrt.acquire();
+                wrt.acquire(); // Primer lector bloquea escritores
             }
             readersWaiting--;
             mutex.release();
@@ -518,17 +515,17 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readCount, writerCount > 0, readersWaiting, writersWaiting, panel.textoPizarra);
         }
 
-        public void finalizarLectura() throws InterruptedException {
+        public void finalizarLectura(String id) throws InterruptedException {
             mutex.acquire();
             readCount--;
             if (readCount == 0) {
-                wrt.release();
+                wrt.release(); // Último lector libera escritores
             }
             mutex.release();
             panel.actualizarEstado(readCount, writerCount > 0, readersWaiting, writersWaiting, panel.textoPizarra);
         }
 
-        public void iniciarEscritura() throws InterruptedException {
+        public void iniciarEscritura(String id) throws InterruptedException {
             writersWaiting++;
             panel.actualizarEstado(readCount, writerCount > 0, readersWaiting, writersWaiting, panel.textoPizarra);
             wrt.acquire();
@@ -537,7 +534,7 @@ public class EscritorLectorPanel extends JPanel {
             panel.actualizarEstado(readCount, true, readersWaiting, writersWaiting, "Limpiando pizarra...");
         }
 
-        public void finalizarEscritura(String nuevoTexto) {
+        public void finalizarEscritura(String id, String nuevoTexto) {
             panel.textoPizarra = nuevoTexto;
             writerCount--;
             wrt.release();

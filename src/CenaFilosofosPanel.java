@@ -11,19 +11,21 @@ public class CenaFilosofosPanel extends JPanel {
     private static final int RADIO_MESA = 200;
     private static final int RADIO_PLATO = 60;
     private static final int RADIO_CENTRO = 80;
-    
     private static final int RADIO_TENEDOR_POSICION = 150; 
     
     private Tenedor[] tenedores;
     private String[] estadoFilosofos = new String[NUM_FILOSOFOS];
     private boolean[] tenedorEnUso = new boolean[NUM_FILOSOFOS];
     private final String tipoSincronizacion;
+    private final PanelGrafoDinamico panelGrafo; // <-- Referencia al grafo
     
-    private MonitorMesaCondicion monitorMesaCondicion; // Monitor Tipo 1 (Variable de Condición)
-    private MonitorMesaMonitores monitorMesaMonitores; // Monitor Tipo 2 (Monitores)
+    private MonitorMesaCondicion monitorMesaCondicion;
+    private MonitorMesaMonitores monitorMesaMonitores;
 
-    public CenaFilosofosPanel(String tipoSincronizacion) {
+    // Constructor modificado
+    public CenaFilosofosPanel(String tipoSincronizacion, PanelGrafoDinamico panelGrafo) {
         this.tipoSincronizacion = tipoSincronizacion;
+        this.panelGrafo = panelGrafo; // <-- Guardar referencia
         setBackground(Color.WHITE);
         
         for (int i = 0; i < NUM_FILOSOFOS; i++) {
@@ -31,11 +33,11 @@ public class CenaFilosofosPanel extends JPanel {
         }
         
         if ("Variable de Condición".equals(tipoSincronizacion)) {
-            monitorMesaCondicion = new MonitorMesaCondicion(this);
+            monitorMesaCondicion = new MonitorMesaCondicion(this, panelGrafo);
             monitorMesaMonitores = null;
         } else if ("Monitores".equals(tipoSincronizacion)) {
             monitorMesaCondicion = null;
-            monitorMesaMonitores = new MonitorMesaMonitores(this);
+            monitorMesaMonitores = new MonitorMesaMonitores(this, panelGrafo);
         }
         
         iniciarSimulacion();
@@ -52,7 +54,7 @@ public class CenaFilosofosPanel extends JPanel {
             for (int i = 0; i < NUM_FILOSOFOS; i++) {
                 Tenedor tenedorIzquierdo = tenedores[i];
                 Tenedor tenedorDerecho = tenedores[(i + 1) % NUM_FILOSOFOS];
-                FilosofoSemaforo f = new FilosofoSemaforo(i, tenedorIzquierdo, tenedorDerecho, this, sala);
+                FilosofoSemaforo f = new FilosofoSemaforo(i, tenedorIzquierdo, tenedorDerecho, this, sala, panelGrafo);
                 new Thread(f).start();
             }
         } else if ("Variable de Condición".equals(tipoSincronizacion)) {
@@ -69,12 +71,13 @@ public class CenaFilosofosPanel extends JPanel {
             for (int i = 0; i < NUM_FILOSOFOS; i++) {
                 Tenedor tenedorIzquierdo = tenedores[i];
                 Tenedor tenedorDerecho = tenedores[(i + 1) % NUM_FILOSOFOS];
-                Filosofo f = new Filosofo(i, tenedorIzquierdo, tenedorDerecho, this);
+                Filosofo f = new Filosofo(i, tenedorIzquierdo, tenedorDerecho, this, panelGrafo);
                 new Thread(f).start();
             }
         }
     }
     
+    // ... (actualizarEstado, setTenedorEnUso, paintComponent sin cambios) ...
     public void actualizarEstado(int id, String estado) {
         SwingUtilities.invokeLater(() -> {
             estadoFilosofos[id] = estado;
@@ -167,6 +170,7 @@ public class CenaFilosofosPanel extends JPanel {
         }
     }
 
+
     private static class Tenedor {
         public final ReentrantLock mutex; 
         public final Semaphore semaforo;
@@ -179,18 +183,17 @@ public class CenaFilosofosPanel extends JPanel {
         }
     }
     
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN MONITORES (ReentrantLock / Condition)
-    // ====================================================================
-    
+    // --- Monitores (con panelGrafo) ---
     enum Estado { PENSANDO, HAMBRIENTO, COMIENDO };
     
     private class MonitorMesaMonitores {
         private final ReentrantLock lock = new ReentrantLock();
         private final Condition[] condition = new Condition[NUM_FILOSOFOS]; 
         private final Estado[] estado = new Estado[NUM_FILOSOFOS];
+        private final PanelGrafoDinamico panelGrafo;
         
-        public MonitorMesaMonitores(CenaFilosofosPanel panel) {
+        public MonitorMesaMonitores(CenaFilosofosPanel panel, PanelGrafoDinamico panelGrafo) {
+            this.panelGrafo = panelGrafo;
             for (int i = 0; i < NUM_FILOSOFOS; i++) {
                 condition[i] = lock.newCondition();
                 estado[i] = Estado.PENSANDO;
@@ -211,6 +214,11 @@ public class CenaFilosofosPanel extends JPanel {
                 panel.actualizarEstado(i, "Comiendo");
                 panel.setTenedorEnUso(izquierda(i), true);
                 panel.setTenedorEnUso(derecha(i), true);
+                
+                // Actualizar grafo
+                panelGrafo.setFlechaAsignacion("P" + i, "R" + izquierda(i));
+                panelGrafo.setFlechaAsignacion("P" + i, "R" + derecha(i));
+                
                 condition[i].signal(); 
             }
         }
@@ -220,6 +228,84 @@ public class CenaFilosofosPanel extends JPanel {
             try {
                 estado[i] = Estado.HAMBRIENTO;
                 panel.actualizarEstado(i, "Hambriento");
+                // Solicitar ambos tenedores en el grafo
+                panelGrafo.setFlechaSolicitud("P" + i, "R" + izquierda(i));
+                panelGrafo.setFlechaSolicitud("P" + i, "R" + derecha(i));
+                
+                test(i, panel);
+                while (estado[i] != Estado.COMIENDO) {
+                    condition[i].await();
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
+        
+        public void dejarTenedores(int i, CenaFilosofosPanel panel) {
+            lock.lock();
+            try {
+                estado[i] = Estado.PENSANDO;
+                panel.actualizarEstado(i, "Pensando");
+                panel.setTenedorEnUso(izquierda(i), false);
+                panel.setTenedorEnUso(derecha(i), false);
+                
+                // Liberar tenedores en el grafo
+                panelGrafo.removerFlechas("P" + i, "R" + izquierda(i));
+                panelGrafo.removerFlechas("P" + i, "R" + derecha(i));
+
+                test(vecinoIzquierdo(i), panel);
+                test(vecinoDerecho(i), panel);
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+    
+    // --- Variable de Condición (con panelGrafo) ---
+    private class MonitorMesaCondicion {
+        private final ReentrantLock lock = new ReentrantLock();
+        private final Condition[] condition = new Condition[NUM_FILOSOFOS]; 
+        private final Estado[] estado = new Estado[NUM_FILOSOFOS];
+        private final PanelGrafoDinamico panelGrafo;
+        
+        public MonitorMesaCondicion(CenaFilosofosPanel panel, PanelGrafoDinamico panelGrafo) {
+            this.panelGrafo = panelGrafo;
+            for (int i = 0; i < NUM_FILOSOFOS; i++) {
+                condition[i] = lock.newCondition();
+                estado[i] = Estado.PENSANDO;
+            }
+        }
+        
+        private int izquierda(int i) { return i; } 
+        private int derecha(int i) { return (i + 1) % NUM_FILOSOFOS; } 
+        private int vecinoIzquierdo(int i) { return (i + NUM_FILOSOFOS - 1) % NUM_FILOSOFOS; }
+        private int vecinoDerecho(int i) { return (i + 1) % NUM_FILOSOFOS; }
+        
+        private void test(int i, CenaFilosofosPanel panel) {
+             if (estado[i] == Estado.HAMBRIENTO &&
+                estado[vecinoIzquierdo(i)] != Estado.COMIENDO &&
+                estado[vecinoDerecho(i)] != Estado.COMIENDO) {
+                
+                estado[i] = Estado.COMIENDO;
+                panel.actualizarEstado(i, "Comiendo");
+                panel.setTenedorEnUso(izquierda(i), true);
+                panel.setTenedorEnUso(derecha(i), true);
+                
+                panelGrafo.setFlechaAsignacion("P" + i, "R" + izquierda(i));
+                panelGrafo.setFlechaAsignacion("P" + i, "R" + derecha(i));
+                
+                condition[i].signal(); 
+            }
+        }
+        
+        public void tomarTenedores(int i, CenaFilosofosPanel panel) throws InterruptedException {
+            lock.lock();
+            try {
+                estado[i] = Estado.HAMBRIENTO;
+                panel.actualizarEstado(i, "Hambriento");
+                panelGrafo.setFlechaSolicitud("P" + i, "R" + izquierda(i));
+                panelGrafo.setFlechaSolicitud("P" + i, "R" + derecha(i));
+                
                 test(i, panel);
                 while (estado[i] != Estado.COMIENDO) {
                     condition[i].await();
@@ -237,6 +323,9 @@ public class CenaFilosofosPanel extends JPanel {
                 panel.setTenedorEnUso(izquierda(i), false);
                 panel.setTenedorEnUso(derecha(i), false);
 
+                panelGrafo.removerFlechas("P" + i, "R" + izquierda(i));
+                panelGrafo.removerFlechas("P" + i, "R" + derecha(i));
+
                 test(vecinoIzquierdo(i), panel);
                 test(vecinoDerecho(i), panel);
             } finally {
@@ -244,8 +333,11 @@ public class CenaFilosofosPanel extends JPanel {
             }
         }
     }
+
+    // --- Clases de Hilos (Filósofos) ---
     
     private static class FilosofoMonitores implements Runnable {
+        // (Constructor y run sin cambios, la lógica está en el monitor)
         private final int id;
         private final MonitorMesaMonitores monitor;
         private final CenaFilosofosPanel panel;
@@ -281,73 +373,9 @@ public class CenaFilosofosPanel extends JPanel {
         }
     }
     
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN VARIABLE DE CONDICIÓN (ReentrantLock / Condition - Estructuralmente Separada)
-    // ====================================================================
-    
-    private class MonitorMesaCondicion {
-        // Mantiene la estructura para diferenciar del Monitor 'principal'
-        private final ReentrantLock lock = new ReentrantLock();
-        private final Condition[] condition = new Condition[NUM_FILOSOFOS]; 
-        private final Estado[] estado = new Estado[NUM_FILOSOFOS];
-        
-        public MonitorMesaCondicion(CenaFilosofosPanel panel) {
-            for (int i = 0; i < NUM_FILOSOFOS; i++) {
-                condition[i] = lock.newCondition();
-                estado[i] = Estado.PENSANDO;
-            }
-        }
-        
-        private int izquierda(int i) { return i; } 
-        private int derecha(int i) { return (i + 1) % NUM_FILOSOFOS; } 
-        private int vecinoIzquierdo(int i) { return (i + NUM_FILOSOFOS - 1) % NUM_FILOSOFOS; }
-        private int vecinoDerecho(int i) { return (i + 1) % NUM_FILOSOFOS; }
-        
-        private void test(int i, CenaFilosofosPanel panel) {
-            if (estado[i] == Estado.HAMBRIENTO &&
-                estado[vecinoIzquierdo(i)] != Estado.COMIENDO &&
-                estado[vecinoDerecho(i)] != Estado.COMIENDO) {
-                
-                estado[i] = Estado.COMIENDO;
-                panel.actualizarEstado(i, "Comiendo");
-                panel.setTenedorEnUso(izquierda(i), true);
-                panel.setTenedorEnUso(derecha(i), true);
-                condition[i].signal(); 
-            }
-        }
-        
-        public void tomarTenedores(int i, CenaFilosofosPanel panel) throws InterruptedException {
-            lock.lock();
-            try {
-                estado[i] = Estado.HAMBRIENTO;
-                panel.actualizarEstado(i, "Hambriento");
-                test(i, panel);
-                while (estado[i] != Estado.COMIENDO) {
-                    condition[i].await();
-                }
-            } finally {
-                lock.unlock();
-            }
-        }
-        
-        public void dejarTenedores(int i, CenaFilosofosPanel panel) {
-            lock.lock();
-            try {
-                estado[i] = Estado.PENSANDO;
-                panel.actualizarEstado(i, "Pensando");
-                panel.setTenedorEnUso(izquierda(i), false);
-                panel.setTenedorEnUso(derecha(i), false);
-
-                test(vecinoIzquierdo(i), panel);
-                test(vecinoDerecho(i), panel);
-            } finally {
-                lock.unlock();
-            }
-        }
-    }
-    
     private static class FilosofoCondicion implements Runnable {
-        private final int id;
+        // (Constructor y run sin cambios, la lógica está en el monitor)
+         private final int id;
         private final MonitorMesaCondicion monitor;
         private final CenaFilosofosPanel panel;
         private final Random random = new Random();
@@ -381,23 +409,21 @@ public class CenaFilosofosPanel extends JPanel {
             }
         }
     }
-    
-    // ====================================================================
-    // CLASES DE SINCRONIZACIÓN MUTEX Y SEMÁFORO (EXISTENTES)
-    // ====================================================================
 
-    private static class Filosofo implements Runnable {
+    private static class Filosofo implements Runnable { // Versión Mutex
         private final int id;
         private final Tenedor tenedorIzquierdo;
         private final Tenedor tenedorDerecho;
         private final CenaFilosofosPanel panel;
+        private final PanelGrafoDinamico panelGrafo;
         private final Random random = new Random();
 
-        public Filosofo(int id, Tenedor izq, Tenedor der, CenaFilosofosPanel panel) {
+        public Filosofo(int id, Tenedor izq, Tenedor der, CenaFilosofosPanel panel, PanelGrafoDinamico panelGrafo) {
             this.id = id;
             this.tenedorIzquierdo = izq;
             this.tenedorDerecho = der;
             this.panel = panel;
+            this.panelGrafo = panelGrafo;
         }
 
         @Override
@@ -431,12 +457,17 @@ public class CenaFilosofosPanel extends JPanel {
                 segundoTenedor = tenedorDerecho;
             }
 
+            panelGrafo.setFlechaSolicitud("P" + id, "R" + primerTenedor.id);
             primerTenedor.mutex.lock(); 
             panel.setTenedorEnUso(primerTenedor.id, true);
+            panelGrafo.setFlechaAsignacion("P" + id, "R" + primerTenedor.id);
             
             try {
+                panelGrafo.setFlechaSolicitud("P" + id, "R" + segundoTenedor.id);
                 if (segundoTenedor.mutex.tryLock()) { 
                     panel.setTenedorEnUso(segundoTenedor.id, true);
+                    panelGrafo.setFlechaAsignacion("P" + id, "R" + segundoTenedor.id);
+                    
                     try {
                         panel.actualizarEstado(id, "Comiendo");
                         Thread.sleep(random.nextInt(3000) + 1000);
@@ -445,11 +476,13 @@ public class CenaFilosofosPanel extends JPanel {
                     } finally {
                         segundoTenedor.mutex.unlock();
                         panel.setTenedorEnUso(segundoTenedor.id, false);
+                        panelGrafo.removerFlechas("P" + id, "R" + segundoTenedor.id);
                     }
                 }
             } finally {
                 primerTenedor.mutex.unlock();
                 panel.setTenedorEnUso(primerTenedor.id, false);
+                panelGrafo.removerFlechas("P" + id, "R" + primerTenedor.id);
             }
         }
     }
@@ -459,15 +492,17 @@ public class CenaFilosofosPanel extends JPanel {
         private final Tenedor tenedorIzquierdo;
         private final Tenedor tenedorDerecho;
         private final CenaFilosofosPanel panel;
+        private final PanelGrafoDinamico panelGrafo;
         private final Random random = new Random();
         private final Semaphore sala;
 
-        public FilosofoSemaforo(int id, Tenedor izq, Tenedor der, CenaFilosofosPanel panel, Semaphore sala) {
+        public FilosofoSemaforo(int id, Tenedor izq, Tenedor der, CenaFilosofosPanel panel, Semaphore sala, PanelGrafoDinamico panelGrafo) {
             this.id = id;
             this.tenedorIzquierdo = izq;
             this.tenedorDerecho = der;
             this.panel = panel;
             this.sala = sala;
+            this.panelGrafo = panelGrafo;
         }
 
         @Override
@@ -490,13 +525,18 @@ public class CenaFilosofosPanel extends JPanel {
         private void comer() {
             try {
                 panel.actualizarEstado(id, "Hambriento");
+                // (La "sala" es un control de concurrencia, no un recurso físico visible)
                 sala.acquire();
 
+                panelGrafo.setFlechaSolicitud("P" + id, "R" + tenedorIzquierdo.id);
                 tenedorIzquierdo.semaforo.acquire();
                 panel.setTenedorEnUso(tenedorIzquierdo.id, true);
+                panelGrafo.setFlechaAsignacion("P" + id, "R" + tenedorIzquierdo.id);
 
+                panelGrafo.setFlechaSolicitud("P" + id, "R" + tenedorDerecho.id);
                 tenedorDerecho.semaforo.acquire();
                 panel.setTenedorEnUso(tenedorDerecho.id, true);
+                panelGrafo.setFlechaAsignacion("P" + id, "R" + tenedorDerecho.id);
 
                 panel.actualizarEstado(id, "Comiendo");
                 Thread.sleep(random.nextInt(3000) + 1000);
@@ -506,9 +546,11 @@ public class CenaFilosofosPanel extends JPanel {
             } finally {
                 tenedorDerecho.semaforo.release();
                 panel.setTenedorEnUso(tenedorDerecho.id, false);
+                panelGrafo.removerFlechas("P" + id, "R" + tenedorDerecho.id);
                 
                 tenedorIzquierdo.semaforo.release();
                 panel.setTenedorEnUso(tenedorIzquierdo.id, false);
+                panelGrafo.removerFlechas("P" + id, "R" + tenedorIzquierdo.id);
                 
                 sala.release();
             }
