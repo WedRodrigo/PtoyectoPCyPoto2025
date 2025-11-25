@@ -1,5 +1,6 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.*; // <--- ¡NUEVO! (Necesario para el ActionListener)
 
 public class PtoyectoPCyPoto2025 extends JFrame {
     private JMenu menuArchivo;
@@ -20,6 +21,10 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private JMenuItem itemBarberoDormilon;
     private JMenuItem itemFumadores;
     private JMenuItem itemLectoresEscritores;
+    private JMenu menuGraficas;
+    private JMenuItem itemAcordeon;
+    private JMenuItem itemCarrusel;
+    private JMenuItem itemScroll;
 
     private TanquePanel tanquePanel;
     private PanelGrafoDinamico panelGrafo; // Modificado: PanelDibujo -> PanelGrafoDinamico
@@ -27,17 +32,30 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private BarberoDormilonPanel barberoDormilonPanel;
     private EscritorLectorPanel escritorLectorPanel;
     private FumadoresPanel fumadoresPanel;
+    
+    // --- INICIO DE CAMBIOS EN VARIABLES ---
+    private GraficasPanel graficasPanel;
+    private JScrollPane graficasScrollPane;
+    private JCheckBox checkAutoScroll; // <--- ¡NUEVO!
+    private JPanel panelInferior;      // <--- ¡NUEVO!
+    // --- FIN DE CAMBIOS EN VARIABLES ---
+    
+    private Simulable simulacionActual; 
 
     private String tipoSincronizacion = "Monitores";
     private JPanel panelSimulacionActivo = null; // Panel para la simulación
+    private JPanel panelSuperior;
 
     PtoyectoPCyPoto2025() {
         setSize(1500, 800);
         setTitle("Proyecto Programación Concurrente y Paralela Otoño 2025");
         getContentPane().setBackground(Color.BLACK);
     
-        setLayout(new GridLayout(1, 2));
+        setLayout(new BorderLayout());
     
+        // Panel superior para simulación y grafo
+        panelSuperior = new JPanel(new GridLayout(1, 2));
+
         // 1. Inicializar el panel de grafo
         panelGrafo = new PanelGrafoDinamico();
         
@@ -46,8 +64,35 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         panelSimulacionActivo.setBackground(new Color(30, 30, 30));
         panelSimulacionActivo.add(new JLabel("Seleccione un problema del menú"));
         
-        add(panelSimulacionActivo); // Panel izquierdo (simulación)
-        add(panelGrafo);           // Panel derecho (grafo)
+        panelSuperior.add(panelSimulacionActivo); // Panel izquierdo (simulación)
+        panelSuperior.add(panelGrafo);            // Panel derecho (grafo)
+
+        // 3. Inicializar el panel de gráficas
+        graficasPanel = new GraficasPanel();
+        graficasScrollPane = new JScrollPane(graficasPanel);
+        graficasScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+
+        // --- INICIO DE CÓDIGO NUEVO ---
+
+        // 4. Crear el CheckBox para el auto-scroll
+        checkAutoScroll = new JCheckBox("Auto-Scroll Gráfica", false);
+        checkAutoScroll.setToolTipText("Marca esta casilla para que la gráfica se desplace automáticamente");
+        
+        // 5. Agregar el ActionListener al CheckBox
+        checkAutoScroll.addActionListener(e -> {
+            // Llama al método setAutoScroll de tu panel de gráficas
+            graficasPanel.setAutoScroll(checkAutoScroll.isSelected());
+        });
+
+        // 6. Crear un panel inferior para agrupar la gráfica y el checkbox
+        panelInferior = new JPanel(new BorderLayout());
+        panelInferior.add(graficasScrollPane, BorderLayout.CENTER); // La gráfica en el centro
+        panelInferior.add(checkAutoScroll, BorderLayout.SOUTH);    // El checkbox abajo
+        
+        // --- FIN DE CÓDIGO NUEVO ---
+
+        add(panelSuperior, BorderLayout.CENTER);
+        add(panelInferior, BorderLayout.SOUTH); // <--- ¡CAMBIADO! (Antes era solo graficasScrollPane)
         
         // ... (Configuración idéntica de la barra de menú) ...
         barraMenu = new JMenuBar();
@@ -68,10 +113,15 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         itemBarberoDormilon = new JMenuItem("Barbero Dormilón");
         itemFumadores = new JMenuItem("Fumadores");
         itemLectoresEscritores = new JMenuItem("Lectores - Escritores");
+        menuGraficas = new JMenu("Gráficas");
+        itemAcordeon = new JMenuItem("Acordeón");
+        itemCarrusel = new JMenuItem("Carrusel");
+        itemScroll = new JMenuItem("Scroll");
 
         barraMenu.add(menuArchivo);
         barraMenu.add(menuSincronizacion);
         barraMenu.add(menuProblemas);
+        barraMenu.add(menuGraficas);
         menuArchivo.add(itemNuevo);
         menuArchivo.add(itemAbrir);
         menuArchivo.add(itemGuardar);
@@ -87,6 +137,10 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         menuProblemas.add(itemFumadores);
         menuProblemas.add(itemLectoresEscritores);
 
+        menuGraficas.add(itemAcordeon);
+        menuGraficas.add(itemCarrusel);
+        menuGraficas.add(itemScroll);
+
         // Agregar acción a los menú de Sincronización
         itemMutex.addActionListener(e -> setSincronizacion("Mutex"));
         itemSemaforo.addActionListener(e -> setSincronizacion("Semáforo"));
@@ -100,7 +154,33 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         itemLectoresEscritores.addActionListener(e -> mostrarEscritorLector());
         itemProductorConsumidor.addActionListener(e -> mostrarProductorConsumidor());
 
+        // Agregar acción a las gráficas
+        itemAcordeon.addActionListener(e -> mostrarGraficaAcordeon());
+        itemCarrusel.addActionListener(e -> mostrarGraficaCarrusel());
+        itemScroll.addActionListener(e -> mostrarGraficaScroll());
+
         setJMenuBar(barraMenu);
+        cambiarPanelSimulacion(new JPanel(), null); // Inicializa con un panel vacío
+    }
+
+    private void mostrarGraficaAcordeon() {
+        graficasPanel.setPreferredSize(new Dimension(graficasPanel.getWidth(), 150));
+        graficasScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        graficasPanel.revalidate();
+    }
+
+    private void mostrarGraficaCarrusel() {
+        // --- CAMBIOS AQUÍ ---
+        checkAutoScroll.setSelected(true);     // <--- ¡NUEVO! Actualiza el checkbox
+        graficasPanel.setAutoScroll(true);     // <--- ¡NUEVO! Llama al método del panel
+        graficasScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    }
+
+    private void mostrarGraficaScroll() {
+        // --- CAMBIOS AQUÍ ---
+        checkAutoScroll.setSelected(false);    // <--- ¡NUEVO! Actualiza el checkbox
+        graficasPanel.setAutoScroll(false);    // <--- ¡NUEVO! Llama al método del panel
+        graficasScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
     }
 
     private void setSincronizacion(String tipo) {
@@ -121,66 +201,58 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         }
     }
 
+    private void cambiarPanelSimulacion(JPanel nuevoPanel, Simulable nuevaSimulacion) {
+        if (simulacionActual != null) {
+            simulacionActual.detener();
+        }
+
+        panelSuperior.removeAll();
+        panelSuperior.add(nuevoPanel);
+        panelSuperior.add(panelGrafo);
+        panelSuperior.revalidate();
+        panelSuperior.repaint();
+
+        simulacionActual = nuevaSimulacion;
+    }
+
     // Métodos "mostrar" actualizados para inyectar el panelGrafo
     
     private void mostrarCenaFilosofos() {
-        getContentPane().removeAll();
-        panelGrafo.inicializarGrafo("CenaFilosofos"); // Prepara el grafo
+        panelGrafo.inicializarGrafo("CenaFilosofos");
         cenaFilosofosPanel = new CenaFilosofosPanel(tipoSincronizacion, panelGrafo);
-        panelSimulacionActivo = cenaFilosofosPanel;
-        add(panelSimulacionActivo);
-        add(panelGrafo);
-        revalidate();
-        repaint();
+        cambiarPanelSimulacion(cenaFilosofosPanel, cenaFilosofosPanel);
     }
     
     private void mostrarBarberoDormilon() {
-        getContentPane().removeAll();
-        panelGrafo.inicializarGrafo("BarberoDormilon"); // Prepara el grafo
+        panelGrafo.inicializarGrafo("BarberoDormilon");
         barberoDormilonPanel = new BarberoDormilonPanel(tipoSincronizacion, panelGrafo);
-        panelSimulacionActivo = barberoDormilonPanel;
-        add(panelSimulacionActivo);
-        add(panelGrafo);
-        revalidate();
-        repaint();
+        cambiarPanelSimulacion(barberoDormilonPanel, barberoDormilonPanel);
     }
     
     private void mostrarEscritorLector() {
-        getContentPane().removeAll();
-        panelGrafo.inicializarGrafo("EscritorLector"); // Prepara el grafo
+        panelGrafo.inicializarGrafo("EscritorLector");
         escritorLectorPanel = new EscritorLectorPanel(tipoSincronizacion, panelGrafo);
-        panelSimulacionActivo = escritorLectorPanel;
-        add(panelSimulacionActivo);
-        add(panelGrafo);
-        revalidate();
-        repaint();
+        cambiarPanelSimulacion(escritorLectorPanel, escritorLectorPanel);
     }
 
     private void mostrarFumadores() {
-        getContentPane().removeAll();
-        panelGrafo.inicializarGrafo("Fumadores"); // Prepara el grafo
+        panelGrafo.inicializarGrafo("Fumadores");
         fumadoresPanel = new FumadoresPanel(tipoSincronizacion, panelGrafo);
-        panelSimulacionActivo = fumadoresPanel;
-        add(panelSimulacionActivo);
-        add(panelGrafo);
-        revalidate();
-        repaint();
+        cambiarPanelSimulacion(fumadoresPanel, fumadoresPanel);
     }
     
     private void mostrarProductorConsumidor() {
-        getContentPane().removeAll();
-        panelGrafo.inicializarGrafo("ProductorConsumidor"); // Prepara el grafo
+        panelGrafo.inicializarGrafo("ProductorConsumidor");
         tanquePanel = new TanquePanel(tipoSincronizacion, panelGrafo);
-        panelSimulacionActivo = tanquePanel;
-        add(panelSimulacionActivo); 
-        add(panelGrafo);
-        revalidate();
-        repaint();
+        cambiarPanelSimulacion(tanquePanel, tanquePanel);
     }
 
     public static void main(String[] args) {
-        PtoyectoPCyPoto2025 ventana = new PtoyectoPCyPoto2025();
-        ventana.setVisible(true);
-        ventana.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        // Es una buena práctica asegurar que la UI se cree en el Hilo de Despacho de Eventos (EDT)
+        SwingUtilities.invokeLater(() -> {
+            PtoyectoPCyPoto2025 ventana = new PtoyectoPCyPoto2025();
+            ventana.setVisible(true);
+            ventana.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        });
     }
 }

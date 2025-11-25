@@ -5,14 +5,17 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.Random;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.Condition;
+import java.util.ArrayList;
+import java.util.List;
 
-public class CenaFilosofosPanel extends JPanel {
+public class CenaFilosofosPanel extends JPanel implements Simulable {
     private static final int NUM_FILOSOFOS = 5;
     private static final int RADIO_MESA = 200;
     private static final int RADIO_PLATO = 60;
     private static final int RADIO_CENTRO = 80;
     private static final int RADIO_TENEDOR_POSICION = 150; 
     
+    private final List<Thread> hilos = new ArrayList<>();
     private Tenedor[] tenedores;
     private String[] estadoFilosofos = new String[NUM_FILOSOFOS];
     private boolean[] tenedorEnUso = new boolean[NUM_FILOSOFOS];
@@ -77,7 +80,6 @@ public class CenaFilosofosPanel extends JPanel {
         }
     }
     
-    // ... (actualizarEstado, setTenedorEnUso, paintComponent sin cambios) ...
     public void actualizarEstado(int id, String estado) {
         SwingUtilities.invokeLater(() -> {
             estadoFilosofos[id] = estado;
@@ -90,6 +92,14 @@ public class CenaFilosofosPanel extends JPanel {
             tenedorEnUso[tenedorId] = enUso;
             repaint();
         });
+    }
+
+    @Override
+    public void detener() {
+        for (Thread hilo : hilos) {
+            hilo.interrupt();
+        }
+        hilos.clear();
     }
 
     @Override
