@@ -4,8 +4,10 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.Random;
 import java.util.concurrent.Semaphore;
+import java.util.List;
+import java.util.ArrayList;
 
-public class BarberoDormilonPanel extends JPanel {
+public class BarberoDormilonPanel extends JPanel implements Simulable {
     // ... (Constantes sin cambios) ...
     private static final int ANCHO_BARBERIA = 400;
     private static final int ALTO_BARBERIA = 300;
@@ -27,6 +29,7 @@ public class BarberoDormilonPanel extends JPanel {
     private final String tipoSincronizacion;
     private final PanelGrafoDinamico panelGrafo; // <-- Referencia al grafo
     private final Random random = new Random();
+    private final List<Thread> hilos = new ArrayList<>();
     
     // Constructor modificado
     public BarberoDormilonPanel(String tipoSincronizacion, PanelGrafoDinamico panelGrafo) {
@@ -57,62 +60,88 @@ public class BarberoDormilonPanel extends JPanel {
         iniciarSimulacion();
     }
     
+    @Override
+    public void detener() {
+        for (Thread hilo : hilos) {
+            hilo.interrupt();
+        }
+        hilos.clear();
+    }
+    
     private void iniciarSimulacion() {
         if ("Semáforo".equals(tipoSincronizacion)) {
             BarberoSemaforo barbero = new BarberoSemaforo(barberiaSemaforo, this);
-            new Thread(barbero).start();
+            Thread hiloBarbero = new Thread(barbero);
+            hiloBarbero.start();
+            hilos.add(hiloBarbero);
             
-            new Thread(() -> {
-                while (true) {
+            Thread generadorClientes = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
                     try {
                         Thread.sleep(random.nextInt(2000) + 1000); 
                         int clienteId = proximoClienteId++;
                         // Crear nodo de cliente en el grafo
                         panelGrafo.crearNodoSiNoExiste("P-C" + clienteId, 50, 50 + (clienteId * 30) % 400, "Proceso", "C" + clienteId);
                         ClienteSemaforo cliente = new ClienteSemaforo(clienteId, barberiaSemaforo, this);
-                        new Thread(cliente).start();
+                        Thread hiloCliente = new Thread(cliente);
+                        hiloCliente.start();
+                        hilos.add(hiloCliente);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return;
                     }
                 }
-            }).start();
+            });
+            generadorClientes.start();
+            hilos.add(generadorClientes);
         } else if ("Monitores".equals(tipoSincronizacion)) {
             BarberoMonitores barbero = new BarberoMonitores(barberiaMonitores, this);
-            new Thread(barbero).start();
+            Thread hiloBarbero = new Thread(barbero);
+            hiloBarbero.start();
+            hilos.add(hiloBarbero);
             
-            new Thread(() -> {
-                while (true) {
+            Thread generadorClientes = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
                     try {
                         Thread.sleep(random.nextInt(2000) + 1000); 
                         int clienteId = proximoClienteId++;
                         panelGrafo.crearNodoSiNoExiste("P-C" + clienteId, 50, 50 + (clienteId * 30) % 400, "Proceso", "C" + clienteId);
                         ClienteMonitores cliente = new ClienteMonitores(clienteId, barberiaMonitores, this);
-                        new Thread(cliente).start();
+                        Thread hiloCliente = new Thread(cliente);
+                        hiloCliente.start();
+                        hilos.add(hiloCliente);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return;
                     }
                 }
-            }).start();
+            });
+            generadorClientes.start();
+            hilos.add(generadorClientes);
         } else { // Mutex o Variable de Condición
             BarberoCondicion barbero = new BarberoCondicion(barberiaCondicion, this);
-            new Thread(barbero).start();
+            Thread hiloBarbero = new Thread(barbero);
+            hiloBarbero.start();
+            hilos.add(hiloBarbero);
             
-            new Thread(() -> {
-                while (true) {
+            Thread generadorClientes = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
                     try {
                         Thread.sleep(random.nextInt(2000) + 1000); 
                         int clienteId = proximoClienteId++;
                         panelGrafo.crearNodoSiNoExiste("P-C" + clienteId, 50, 50 + (clienteId * 30) % 400, "Proceso", "C" + clienteId);
                         ClienteCondicion cliente = new ClienteCondicion(clienteId, barberiaCondicion, this);
-                        new Thread(cliente).start();
+                        Thread hiloCliente = new Thread(cliente);
+                        hiloCliente.start();
+                        hilos.add(hiloCliente);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return;
                     }
                 }
-            }).start();
+            });
+            generadorClientes.start();
+            hilos.add(generadorClientes);
         }
     }
     
