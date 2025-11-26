@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.ArrayList;
 
 // No implementa ninguna interfaz extra, solo hereda de JPanel
-public class FumadoresPanel extends JPanel {
+public class FumadoresPanel extends JPanel implements Simulable {
     private static final int TABACO = 0;
     private static final int PAPEL = 1;
     private static final int FOSFOROS = 2;
@@ -57,7 +57,7 @@ public class FumadoresPanel extends JPanel {
     }
 
     // Método para detener los hilos de la simulación
-    public void stop() {
+    public void detener() {
         for (Thread t : simulationThreads) {
             if (t != null && t.isAlive()) {
                 t.interrupt();

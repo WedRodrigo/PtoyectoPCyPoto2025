@@ -69,6 +69,15 @@ public class PanelGrafoDinamico extends JPanel {
                 nodos.put("P2", new Nodo(500, 400, "Proceso", "F2 (Fos)"));
                 break;
 
+            case "EstacionSolar":
+                for (int i = 0; i < 5; i++) {
+                    nodos.put("D" + i, new Nodo(80 + i * 120, 380, "Proceso", "D" + i));
+                }
+                nodos.put("E", new Nodo(320, 150, "Recurso", "Energía"));
+                nodos.put("AE", new Nodo(520, 150, "Proceso", "Admin E"));
+                nodos.put("B0", new Nodo(320, 250, "Recurso", "Bahías (3)"));
+                break;
+
             case "Vacio":
             default:
                 tituloProblema = "Grafo de Asignación de Recursos";
@@ -82,6 +91,17 @@ public class PanelGrafoDinamico extends JPanel {
      */
     public void crearNodoSiNoExiste(String id, int x, int y, String tipo, String etiqueta) {
         nodos.putIfAbsent(id, new Nodo(x, y, tipo, etiqueta));
+        SwingUtilities.invokeLater(this::repaint);
+    }
+
+    /**
+     * Método para agregar o actualizar un nodo con información.
+     */
+    public void agregarNodo(String id, String informacion) {
+        Nodo nodo = nodos.get(id);
+        if (nodo != null) {
+            nodo.setInformacion(informacion);
+        }
         SwingUtilities.invokeLater(this::repaint);
     }
 

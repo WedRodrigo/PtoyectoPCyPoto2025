@@ -21,6 +21,8 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private JMenuItem itemBarberoDormilon;
     private JMenuItem itemFumadores;
     private JMenuItem itemLectoresEscritores;
+    private JMenuItem itemEstacionSolar;
+    private JMenuItem itemEstacionSolarMPJ;
     private JMenu menuGraficas;
     private JMenuItem itemAcordeon;
     private JMenuItem itemCarrusel;
@@ -32,6 +34,8 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private BarberoDormilonPanel barberoDormilonPanel;
     private EscritorLectorPanel escritorLectorPanel;
     private FumadoresPanel fumadoresPanel;
+    private EstacionSolarPanel estacionSolarPanel;
+    private EstacionSolarPanelParalelo estacionSolarPanelParalelo;
     
     // --- INICIO DE CAMBIOS EN VARIABLES ---
     private GraficasPanel graficasPanel;
@@ -113,7 +117,12 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         itemBarberoDormilon = new JMenuItem("Barbero Dormilón");
         itemFumadores = new JMenuItem("Fumadores");
         itemLectoresEscritores = new JMenuItem("Lectores - Escritores");
+        itemEstacionSolar = new JMenuItem("Estación Solar");
+        itemEstacionSolarMPJ = new JMenuItem("Estación Solar (MPJ)");
         menuGraficas = new JMenu("Gráficas");
+        
+        // Agregar acción a Estación Solar MPJ
+        itemEstacionSolarMPJ.addActionListener(e -> mostrarEstacionSolarMPJ());
         itemAcordeon = new JMenuItem("Acordeón");
         itemCarrusel = new JMenuItem("Carrusel");
         itemScroll = new JMenuItem("Scroll");
@@ -136,6 +145,8 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         menuProblemas.add(itemBarberoDormilon);
         menuProblemas.add(itemFumadores);
         menuProblemas.add(itemLectoresEscritores);
+        menuProblemas.add(itemEstacionSolar);
+        menuProblemas.add(itemEstacionSolarMPJ);
 
         menuGraficas.add(itemAcordeon);
         menuGraficas.add(itemCarrusel);
@@ -153,6 +164,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         itemFumadores.addActionListener(e -> mostrarFumadores());
         itemLectoresEscritores.addActionListener(e -> mostrarEscritorLector());
         itemProductorConsumidor.addActionListener(e -> mostrarProductorConsumidor());
+        itemEstacionSolar.addActionListener(e -> mostrarEstacionSolar());
 
         // Agregar acción a las gráficas
         itemAcordeon.addActionListener(e -> mostrarGraficaAcordeon());
@@ -198,6 +210,8 @@ public class PtoyectoPCyPoto2025 extends JFrame {
             mostrarFumadores();
         } else if (panelSimulacionActivo instanceof TanquePanel) {
             mostrarProductorConsumidor();
+        } else if (panelSimulacionActivo instanceof EstacionSolarPanel) {
+            mostrarEstacionSolar();
         }
     }
 
@@ -246,6 +260,26 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         tanquePanel = new TanquePanel(tipoSincronizacion, panelGrafo);
         cambiarPanelSimulacion(tanquePanel, tanquePanel);
     }
+    
+    private void mostrarEstacionSolar() {
+        panelGrafo.inicializarGrafo("EstacionSolar");
+        estacionSolarPanel = new EstacionSolarPanel(tipoSincronizacion, panelGrafo);
+        cambiarPanelSimulacion(estacionSolarPanel, estacionSolarPanel);
+    }
+    
+    private void mostrarEstacionSolarMPJ() {
+        panelGrafo.inicializarGrafo("EstacionSolar");
+        graficasPanel.resetSeries("Comparativa de Eficiencia (MPI)", 
+                                 "Núcleo 1 (Mutex)", 
+                                 "Núcleo 2 (Semáforos)", 
+                                 "Núcleo 3 (Monitores)", 
+                                 "Núcleo 4 (Var. Cond)", 
+                                 "Núcleo 5 (Barreras)");
+        estacionSolarPanelParalelo = new EstacionSolarPanelParalelo(panelGrafo, graficasPanel);
+        cambiarPanelSimulacion(estacionSolarPanelParalelo, estacionSolarPanelParalelo);
+    }
+
+
 
     public static void main(String[] args) {
         // Es una buena práctica asegurar que la UI se cree en el Hilo de Despacho de Eventos (EDT)

@@ -4,9 +4,12 @@ import java.awt.event.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.Condition;
+import java.util.ArrayList;
+import java.util.List;
 
-public class TanquePanel extends JPanel {
+public class TanquePanel extends JPanel implements Simulable {
     private int nivelAgua = 0; // 0-100%
+    private final List<Thread> hilos = new ArrayList<>();
     
     // Mutex
     private final ReentrantLock mutex = new ReentrantLock();
@@ -84,7 +87,7 @@ public class TanquePanel extends JPanel {
             while (true) {
                 consumir(); 
                 try {
-                    Thread.sleep(1200);
+                    Thread.sleep(1050);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -317,5 +320,13 @@ public class TanquePanel extends JPanel {
             g2d.drawString(i + "%", margen - 30, y);
             g2d.drawLine(margen - 5, y, margen, y);
         }
+    }
+
+    @Override
+    public void detener() {
+        for (Thread hilo : hilos) {
+            hilo.interrupt();
+        }
+        hilos.clear();
     }
 }
