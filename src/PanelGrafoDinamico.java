@@ -70,12 +70,23 @@ public class PanelGrafoDinamico extends JPanel {
                 break;
 
             case "EstacionSolar":
-                for (int i = 0; i < 5; i++) {
-                    nodos.put("D" + i, new Nodo(80 + i * 120, 380, "Proceso", "D" + i));
+                nodos.put("Estacion", new Nodo(350, 250, "Recurso", "Estación Solar (E/B)"));
+                nodos.put("Nucleo1", new Nodo(150, 100, "Proceso", "N1: Mutex"));
+                nodos.put("Nucleo2", new Nodo(550, 100, "Proceso", "N2: Semáforos"));
+                nodos.put("Nucleo3", new Nodo(150, 400, "Proceso", "N3: Monitores"));
+                nodos.put("Nucleo4", new Nodo(550, 400, "Proceso", "N4: LockCond"));
+                break;
+
+            case "EstacionSolarDrones":
+                nodos.put("Estacion", new Nodo(350, 200, "Recurso", "Estación Solar (E/B)"));
+                nodos.put("B1", new Nodo(300, 260, "Recurso", "B1"));
+                nodos.put("B2", new Nodo(350, 260, "Recurso", "B2"));
+                nodos.put("B3", new Nodo(400, 260, "Recurso", "B3"));
+                for (int i = 0; i < 8; i++) {
+                    int x = 120 + (i % 4) * 160;
+                    int y = (i < 4) ? 360 : 100;
+                    nodos.put("D" + i, new Nodo(x, y, "Proceso", "D" + i));
                 }
-                nodos.put("E", new Nodo(320, 150, "Recurso", "Energía"));
-                nodos.put("AE", new Nodo(520, 150, "Proceso", "Admin E"));
-                nodos.put("B0", new Nodo(320, 250, "Recurso", "Bahías (3)"));
                 break;
 
             case "Vacio":

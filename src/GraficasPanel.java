@@ -29,8 +29,8 @@ public class GraficasPanel extends JPanel {
         dataset = new XYSeriesCollection(new XYSeries("Datos Aleatorios"));
         chart = ChartFactory.createXYLineChart(
                 "Comparativa de Eficiencia (MPI)",
-                "Tiempo (ms)",
                 "Nivel Construido",
+                "Tiempo (ms)",
                 dataset,
                 PlotOrientation.VERTICAL,
                 true, true, false);
@@ -40,10 +40,9 @@ public class GraficasPanel extends JPanel {
         XYStepRenderer stepRenderer = new XYStepRenderer();
         plot.setRenderer(stepRenderer);
 
-        // Configurar el eje Y con rango 0-20 y marcas cada 2
+        // Configurar el eje Y con auto-rango para que los datos siempre se vean
         NumberAxis yAxis = (NumberAxis) plot.getRangeAxis();
-        yAxis.setRange(0, 20);
-        yAxis.setTickUnit(new NumberTickUnit(2));
+        yAxis.setAutoRange(true);
 
         // Configurar el eje X con formato de miles
         NumberAxis xAxis = (NumberAxis) plot.getDomainAxis();
@@ -54,8 +53,7 @@ public class GraficasPanel extends JPanel {
         chartPanel.setPreferredSize(new Dimension(800, PANEL_HEIGHT));
         add(chartPanel, BorderLayout.CENTER);
         
-        // Agregar label de estado
-        statusLabel = new JLabel("Estado: Esperando datos...");
+        statusLabel = new JLabel("<html>Estado:<br/>Esperando datos...</html>");
         statusLabel.setHorizontalAlignment(SwingConstants.LEFT);
         add(statusLabel, BorderLayout.SOUTH);
         plot.setBackgroundPaint(Color.WHITE);
@@ -69,7 +67,7 @@ public class GraficasPanel extends JPanel {
         chartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
         add(chartPanel, BorderLayout.CENTER);
 
-        // Rango inicial positivo para evitar Range[0,0]
+        // Rango inicial del eje X (Nivel Construido)
         chart.getXYPlot().getDomainAxis().setRange(0, 1);
 
         iniciarGeneradorPorDefecto();
@@ -177,11 +175,9 @@ public class GraficasPanel extends JPanel {
         chart.getXYPlot().setDataset(dataset);
         chart.getXYPlot().getDomainAxis().setRange(0, 1);
         
-        // Configurar el rango del eje Y (Nivel Construido) de 0 a 20
-        chart.getXYPlot().getRangeAxis().setRange(0, 20);
-        // Configurar ticks cada 2 unidades
+        // Habilitar auto-rango en Y para que se ajuste a los datos
         NumberAxis rangeAxis = (NumberAxis) chart.getXYPlot().getRangeAxis();
-        rangeAxis.setTickUnit(new NumberTickUnit(2));
+        rangeAxis.setAutoRange(true);
         
         setPreferredSize(new Dimension(getPreferredSize().width, PANEL_HEIGHT));
         revalidate();
@@ -224,16 +220,15 @@ public class GraficasPanel extends JPanel {
                     contadoresPuntos[index]++;
                 }
                 
-                // Mostrar resumen de puntos por serie
-                StringBuilder resumen = new StringBuilder("Puntos por serie: ");
                 String[] nombresSeries = {"Mutex", "Semáforos", "Monitores", "Var. Cond", "Barreras"};
+                StringBuilder resumen = new StringBuilder("<html>Puntos por serie:<br/>");
                 for (int i = 0; i < contadoresPuntos.length; i++) {
-                    resumen.append(nombresSeries[i]).append(":").append(contadoresPuntos[i]);
-                    if (i < contadoresPuntos.length - 1) resumen.append(", ");
+                    resumen.append(nombresSeries[i]).append(": ").append(contadoresPuntos[i]).append("<br/>");
                 }
+                resumen.append("</html>");
                 statusLabel.setText(resumen.toString());
             } else {
-                statusLabel.setText("Estado: ERROR - Serie no encontrada: " + serie);
+                statusLabel.setText("<html>Estado:<br/>ERROR - Serie no encontrada: " + serie + "</html>");
             }
         });
     }
