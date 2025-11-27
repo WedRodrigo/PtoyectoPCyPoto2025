@@ -23,6 +23,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private JMenuItem itemLectoresEscritores;
     private JMenuItem itemEstacionSolar;
     private JMenuItem itemEstacionSolarMPJ;
+    private JMenuItem itemEstacionSolarMPJDrones;
     private JMenu menuGraficas;
     private JMenuItem itemAcordeon;
     private JMenuItem itemCarrusel;
@@ -118,11 +119,13 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         itemFumadores = new JMenuItem("Fumadores");
         itemLectoresEscritores = new JMenuItem("Lectores - Escritores");
         itemEstacionSolar = new JMenuItem("Estación Solar");
-        itemEstacionSolarMPJ = new JMenuItem("Estación Solar (MPJ)");
+        itemEstacionSolarMPJ = new JMenuItem("Estación Solar (MPJ - Algoritmos)");
+        itemEstacionSolarMPJDrones = new JMenuItem("Estación Solar (MPJ - Drones)");
         menuGraficas = new JMenu("Gráficas");
         
         // Agregar acción a Estación Solar MPJ
         itemEstacionSolarMPJ.addActionListener(e -> mostrarEstacionSolarMPJ());
+        itemEstacionSolarMPJDrones.addActionListener(e -> mostrarEstacionSolarMPJDrones());
         itemAcordeon = new JMenuItem("Acordeón");
         itemCarrusel = new JMenuItem("Carrusel");
         itemScroll = new JMenuItem("Scroll");
@@ -147,6 +150,7 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         menuProblemas.add(itemLectoresEscritores);
         menuProblemas.add(itemEstacionSolar);
         menuProblemas.add(itemEstacionSolarMPJ);
+        menuProblemas.add(itemEstacionSolarMPJDrones);
 
         menuGraficas.add(itemAcordeon);
         menuGraficas.add(itemCarrusel);
@@ -281,6 +285,40 @@ public class PtoyectoPCyPoto2025 extends JFrame {
                 "Núcleo 5 (Barreras)");
 
         panelGrafo.inicializarGrafo("EstacionSolar");
+
+        JPanel panelCentral = new JPanel(new GridLayout(1, 2));
+        panelCentral.add(graficasPanel);
+        panelCentral.add(panelGrafo);
+
+        add(panelCentral);
+        revalidate();
+        repaint();
+
+        new Thread(() -> {
+            try {
+                EstacionSolarMPJ estacion = new EstacionSolarMPJ(graficasPanel, panelGrafo);
+                estacion.iniciar(new String[]{});
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                    "Error iniciando MPJ: Asegúrate de ejecutar con mpjrun.bat\n" + ex.getMessage());
+            }
+        }).start();
+    }
+
+    private void mostrarEstacionSolarMPJDrones() {
+        getContentPane().removeAll();
+
+        if (graficasPanel == null) {
+            graficasPanel = new GraficasPanel();
+        }
+        graficasPanel.resetSeries("Comparativa de Eficiencia (MPI)",
+                "Núcleo 1 (Mutex)",
+                "Núcleo 2 (Semáforos)",
+                "Núcleo 3 (Monitores)",
+                "Núcleo 4 (Var. Cond)",
+                "Núcleo 5 (Barreras)");
+
+        panelGrafo.inicializarGrafo("EstacionSolarDrones");
 
         JPanel panelCentral = new JPanel(new GridLayout(1, 2));
         panelCentral.add(graficasPanel);

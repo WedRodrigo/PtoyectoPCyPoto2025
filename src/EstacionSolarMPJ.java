@@ -7,6 +7,7 @@ public class EstacionSolarMPJ {
 
     // Tags para mensajes
     static final int TAG_DATA = 1;
+    static final int TAG_EVENT = 2; // eventos de dron: [idDron, accion]
 
     // Referencias a GUI (Solo usadas por Rank 0)
     private GraficasPanel graficasPanel;
@@ -32,6 +33,7 @@ public class EstacionSolarMPJ {
                 case 2: algoritmo = "Semaforos"; break;
                 case 3: algoritmo = "Monitores"; break;
                 case 4: algoritmo = "LockCondicion"; break;
+                case 5: algoritmo = "Barreras"; break;
                 default: algoritmo = "General"; break;
             }
             System.out.println("Nucleo " + me + ": Probando algoritmo " + algoritmo);
@@ -40,25 +42,32 @@ public class EstacionSolarMPJ {
     }
 
     private void correrMaestro() {
-        double[] buffer = new double[2]; // [Rank, Rendimiento]
+        double[] bufferData = new double[2]; // [Rank, Rendimiento]
         int[] niveles = new int[]{0,0,0,0,0};
         while (true) {
             try {
-                MPI.COMM_WORLD.Recv(buffer, 0, 2, MPI.DOUBLE, MPI.ANY_SOURCE, TAG_DATA);
-
-                int rankOrigen = (int) buffer[0];
-                double tiempo = buffer[1]; // Tiempo por recarga (ms)
-
-                String nombreAlgoritmo = getNombreAlgoritmo(rankOrigen);
-                final String serie = getSeriePorRank(rankOrigen);
-                int idx = Math.max(0, Math.min(4, rankOrigen - 1));
-                int nivel = ++niveles[idx];
-
-                SwingUtilities.invokeLater(() -> {
-                    // X = Nivel Construido, Y = Tiempo (ms)
-                    graficasPanel.addPoint(serie, nivel, tiempo);
-                });
-                panelGrafo.setFlechaSolicitud("Nucleo" + rankOrigen, "Estacion");
+                Status st = MPI.COMM_WORLD.Probe(MPI.ANY_SOURCE, MPI.ANY_TAG);
+                if (st == null) continue;
+                if (st.tag == TAG_DATA) {
+                    MPI.COMM_WORLD.Recv(bufferData, 0, 2, MPI.DOUBLE, st.source, TAG_DATA);
+                    int rankOrigen = (int) bufferData[0];
+                    double tiempo = bufferData[1];
+                    final String serie = getSeriePorRank(rankOrigen);
+                    int idx = Math.max(0, Math.min(4, rankOrigen - 1));
+                    int nivel = ++niveles[idx];
+                    SwingUtilities.invokeLater(() -> graficasPanel.addPoint(serie, nivel, tiempo));
+                    panelGrafo.setFlechaSolicitud("Nucleo" + rankOrigen, "Estacion");
+                } else if (st.tag == TAG_EVENT) {
+                    int[] ev = new int[2]; // [idDron, accion]
+                    MPI.COMM_WORLD.Recv(ev, 0, 2, MPI.INT, st.source, TAG_EVENT);
+                    int idDron = ev[0];
+                    int accion = ev[1]; // 0=solicitud,1=asignacion/completado
+                    if (accion == 0) {
+                        panelGrafo.setFlechaSolicitud("D" + idDron, "Estacion");
+                    } else {
+                        panelGrafo.setFlechaAsignacion("D" + idDron, "Estacion");
+                    }
+                }
             } catch (MPIException e) {
                 break;
             }
@@ -79,9 +88,15 @@ public class EstacionSolarMPJ {
             try {
                 for (int i = 0; i < numDrones; i++) {
                     boolean critico = rand.nextBoolean();
+                    // Evento: solicitud de dron
+                    int[] evSolicitud = new int[]{i, 0};
+                    MPI.COMM_WORLD.Send(evSolicitud, 0, 2, MPI.INT, 0, TAG_EVENT);
                     estacion.solicitarRecarga(i, critico);
                     Thread.sleep(rand.nextInt(10) + 1);
                     estacion.liberarBahia();
+                    // Evento: asignación/completado
+                    int[] evAsignacion = new int[]{i, 1};
+                    MPI.COMM_WORLD.Send(evAsignacion, 0, 2, MPI.INT, 0, TAG_EVENT);
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -141,16 +156,32 @@ public class EstacionSolarMPJ {
                             "Núcleo 4 (Var. Cond)",
                             "Núcleo 5 (Barreras)");
                     PanelGrafoDinamico grafo = new PanelGrafoDinamico();
-                    grafo.inicializarGrafo("EstacionSolar");
+                    // Modo inicial según args: "drones" o "algoritmos" (por defecto)
+                    if (args != null && args.length > 0 && "drones".equalsIgnoreCase(args[0])) {
+                        grafo.inicializarGrafo("EstacionSolarDrones");
+                    } else {
+                        grafo.inicializarGrafo("EstacionSolar");
+                    }
+
+                    EstacionSolarPanel dronesPanel = new EstacionSolarPanel("Monitores", grafo);
+                    dronesPanel.setPreferredSize(new Dimension(1000, 300));
 
                     JPanel top = new JPanel(new GridLayout(1, 2));
                     top.add(graficas);
                     top.add(grafo);
 
-                    EstacionSolarPanel dronesPanel = new EstacionSolarPanel("Monitores", grafo);
-                    dronesPanel.setPreferredSize(new Dimension(1000, 300));
+                    // Controles para alternar representación del grafo
+                    JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
+                    JButton btnAlgoritmos = new JButton("Algoritmos");
+                    JButton btnDrones = new JButton("Drones");
+                    controls.add(btnAlgoritmos);
+                    controls.add(btnDrones);
+
+                    btnAlgoritmos.addActionListener(e -> grafo.inicializarGrafo("EstacionSolar"));
+                    btnDrones.addActionListener(e -> grafo.inicializarGrafo("EstacionSolarDrones"));
 
                     frame.setLayout(new BorderLayout());
+                    frame.add(controls, BorderLayout.NORTH);
                     frame.add(top, BorderLayout.CENTER);
                     frame.add(dronesPanel, BorderLayout.SOUTH);
                     frame.setVisible(true);
