@@ -268,15 +268,37 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     }
     
     private void mostrarEstacionSolarMPJ() {
+        getContentPane().removeAll();
+
+        if (graficasPanel == null) {
+            graficasPanel = new GraficasPanel();
+        }
+        graficasPanel.resetSeries("Comparativa de Eficiencia (MPI)",
+                "Núcleo 1 (Mutex)",
+                "Núcleo 2 (Semáforos)",
+                "Núcleo 3 (Monitores)",
+                "Núcleo 4 (Var. Cond)",
+                "Núcleo 5 (Barreras)");
+
         panelGrafo.inicializarGrafo("EstacionSolar");
-        graficasPanel.resetSeries("Comparativa de Eficiencia (MPI)", 
-                                 "Núcleo 1 (Mutex)", 
-                                 "Núcleo 2 (Semáforos)", 
-                                 "Núcleo 3 (Monitores)", 
-                                 "Núcleo 4 (Var. Cond)", 
-                                 "Núcleo 5 (Barreras)");
-        estacionSolarPanelParalelo = new EstacionSolarPanelParalelo(panelGrafo, graficasPanel);
-        cambiarPanelSimulacion(estacionSolarPanelParalelo, estacionSolarPanelParalelo);
+
+        JPanel panelCentral = new JPanel(new GridLayout(1, 2));
+        panelCentral.add(graficasPanel);
+        panelCentral.add(panelGrafo);
+
+        add(panelCentral);
+        revalidate();
+        repaint();
+
+        new Thread(() -> {
+            try {
+                EstacionSolarMPJ estacion = new EstacionSolarMPJ(graficasPanel, panelGrafo);
+                estacion.iniciar(new String[]{});
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                    "Error iniciando MPJ: Asegúrate de ejecutar con mpjrun.bat\n" + ex.getMessage());
+            }
+        }).start();
     }
 
 

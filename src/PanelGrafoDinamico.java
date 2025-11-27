@@ -70,12 +70,11 @@ public class PanelGrafoDinamico extends JPanel {
                 break;
 
             case "EstacionSolar":
-                for (int i = 0; i < 5; i++) {
-                    nodos.put("D" + i, new Nodo(80 + i * 120, 380, "Proceso", "D" + i));
-                }
-                nodos.put("E", new Nodo(320, 150, "Recurso", "Energía"));
-                nodos.put("AE", new Nodo(520, 150, "Proceso", "Admin E"));
-                nodos.put("B0", new Nodo(320, 250, "Recurso", "Bahías (3)"));
+                nodos.put("Estacion", new Nodo(350, 250, "Recurso", "Estación Solar (E/B)"));
+                nodos.put("Nucleo1", new Nodo(150, 100, "Proceso", "N1: Mutex"));
+                nodos.put("Nucleo2", new Nodo(550, 100, "Proceso", "N2: Semáforos"));
+                nodos.put("Nucleo3", new Nodo(150, 400, "Proceso", "N3: Monitores"));
+                nodos.put("Nucleo4", new Nodo(550, 400, "Proceso", "N4: LockCond"));
                 break;
 
             case "Vacio":
