@@ -24,7 +24,7 @@ public class EstacionSolarMPJ {
 
         if (me == 0) {
             System.out.println("Maestro (Rank 0): Escuchando resultados...");
-            panelGrafo.inicializarGrafo("EstacionSolar");
+            panelGrafo.inicializarGrafo("EstacionSolarDrones");
             correrMaestro();
         } else {
             String algoritmo = "";
@@ -119,7 +119,7 @@ public class EstacionSolarMPJ {
 
     private String getNombreAlgoritmo(int rank) {
         switch (rank) {
-            case 1: return "Algoritmo: Mutex (PDF)";
+            case 1: return "Algoritmo: Mutex ";
             case 2: return "Algoritmo: Semáforos";
             case 3: return "Algoritmo: Monitores";
             case 4: return "Algoritmo: Lock/Cond";
@@ -156,34 +156,21 @@ public class EstacionSolarMPJ {
                             "Núcleo 4 (Var. Cond)",
                             "Núcleo 5 (Barreras)");
                     PanelGrafoDinamico grafo = new PanelGrafoDinamico();
-                    // Modo inicial según args: "drones" o "algoritmos" (por defecto)
-                    if (args != null && args.length > 0 && "drones".equalsIgnoreCase(args[0])) {
-                        grafo.inicializarGrafo("EstacionSolarDrones");
-                    } else {
-                        grafo.inicializarGrafo("EstacionSolar");
-                    }
-
+                    grafo.inicializarGrafo("EstacionSolarDrones");
                     EstacionSolarPanel dronesPanel = new EstacionSolarPanel("Monitores", grafo);
                     dronesPanel.setPreferredSize(new Dimension(1000, 300));
 
                     JPanel top = new JPanel(new GridLayout(1, 2));
-                    top.add(graficas);
+                    top.add(dronesPanel);
                     top.add(grafo);
 
-                    // Controles para alternar representación del grafo
-                    JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
-                    JButton btnAlgoritmos = new JButton("Algoritmos");
-                    JButton btnDrones = new JButton("Drones");
-                    controls.add(btnAlgoritmos);
-                    controls.add(btnDrones);
-
-                    btnAlgoritmos.addActionListener(e -> grafo.inicializarGrafo("EstacionSolar"));
-                    btnDrones.addActionListener(e -> grafo.inicializarGrafo("EstacionSolarDrones"));
-
                     frame.setLayout(new BorderLayout());
-                    frame.add(controls, BorderLayout.NORTH);
-                    frame.add(top, BorderLayout.CENTER);
-                    frame.add(dronesPanel, BorderLayout.SOUTH);
+                    JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, top, graficas);
+                    split.setResizeWeight(0.52);
+                    split.setDividerLocation(0.52);
+                    split.setDividerSize(6);
+                    split.setContinuousLayout(true);
+                    frame.add(split, BorderLayout.CENTER);
                     frame.setVisible(true);
 
                     new Thread(() -> {

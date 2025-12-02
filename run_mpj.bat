@@ -6,7 +6,7 @@ echo ========================================
 REM Configurar variables
 cd src
 set MPJ_HOME=..\lib
-set CLASSPATH=.;..\lib\jfreechart-1.0.19.jar;..\lib\jcommon-1.0.23.jar;..\lib\mpj.jar
+set CLASSPATH=.;..\lib\jfreechart-1.0.19.jar;..\lib\jcommon-1.0.23.jar;..\lib\mpj.jar;..\lib\starter.jar
 
 REM Compilar todas las clases
 echo Compilando clases...
@@ -27,7 +27,7 @@ echo Iniciando ejecución paralela con MPJ...
 echo Ejecutando 4 procesos (1 maestro + 3 trabajadores)
 echo.
 
-java -cp "%CLASSPATH%" -Djava.library.path=..\lib org.mpj.runtime.Starter mpj.conf EstacionSolarMPJ
+java -cp "%CLASSPATH%" -Djava.library.path=..\lib runtime.starter.MPJRun -np 4 EstacionSolarMPJ
 
 echo.
 echo Ejecución completada

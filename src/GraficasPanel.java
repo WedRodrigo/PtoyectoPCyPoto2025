@@ -1,5 +1,6 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.geom.Ellipse2D;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -11,17 +12,16 @@ import org.jfree.chart.axis.NumberTickUnit;
 import org.jfree.chart.labels.StandardXYToolTipGenerator;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
+import org.jfree.chart.title.TextTitle;
 
 public class GraficasPanel extends JPanel {
     private XYSeriesCollection dataset;
     private JFreeChart chart;
     private ChartPanel chartPanel;
     private volatile boolean autoScroll = false;
-    private static final int PANEL_HEIGHT = 200;
+    private static final int PANEL_HEIGHT = 300;
     private Thread generadorPorDefecto;
-    private JLabel statusLabel;
-    private int[] contadoresPuntos = new int[5]; // Contadores para cada serie
-
+    
     public GraficasPanel() {
         setLayout(new BorderLayout());
         setPreferredSize(new Dimension(800, PANEL_HEIGHT));
@@ -51,24 +51,28 @@ public class GraficasPanel extends JPanel {
         // Fondo blanco con malla gris tenue
         chartPanel = new ChartPanel(chart);
         chartPanel.setPreferredSize(new Dimension(800, PANEL_HEIGHT));
-        add(chartPanel, BorderLayout.CENTER);
-        
-        statusLabel = new JLabel("<html>Estado:<br/>Esperando datos...</html>");
-        statusLabel.setHorizontalAlignment(SwingConstants.LEFT);
-        add(statusLabel, BorderLayout.SOUTH);
-        plot.setBackgroundPaint(Color.WHITE);
-        plot.setDomainGridlinePaint(Color.LIGHT_GRAY);
-        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
-
-        chartPanel = new ChartPanel(chart);
         chartPanel.setMinimumDrawWidth(0);
         chartPanel.setMinimumDrawHeight(0);
         chartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
         chartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
+        chartPanel.setMouseWheelEnabled(true);
         add(chartPanel, BorderLayout.CENTER);
+        
+        plot.setBackgroundPaint(Color.WHITE);
+        plot.setDomainGridlinePaint(Color.LIGHT_GRAY);
+        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
 
         // Rango inicial del eje X (Nivel Construido)
         chart.getXYPlot().getDomainAxis().setRange(0, 1);
+
+        chart.setTitle(new TextTitle("Comparativa de Eficiencia (MPI)", new Font("SansSerif", Font.BOLD, 18)));
+        plot.getRangeAxis().setLabelFont(new Font("SansSerif", Font.PLAIN, 14));
+        plot.getDomainAxis().setLabelFont(new Font("SansSerif", Font.PLAIN, 14));
+        plot.getRangeAxis().setTickLabelFont(new Font("SansSerif", Font.PLAIN, 12));
+        plot.getDomainAxis().setTickLabelFont(new Font("SansSerif", Font.PLAIN, 12));
+        if (chart.getLegend() != null) {
+            chart.getLegend().setItemFont(new Font("SansSerif", Font.PLAIN, 12));
+        }
 
         iniciarGeneradorPorDefecto();
     }
@@ -165,11 +169,23 @@ public class GraficasPanel extends JPanel {
         XYStepRenderer renderer = (XYStepRenderer) plot.getRenderer();
         
         // Colores específicos para cada algoritmo
-        renderer.setSeriesPaint(0, Color.RED);      // Mutex
-        renderer.setSeriesPaint(1, Color.BLUE);     // Semáforos
-        renderer.setSeriesPaint(2, Color.GREEN);    // Monitores
-        renderer.setSeriesPaint(3, Color.YELLOW);   // Variables de Condición
-        renderer.setSeriesPaint(4, Color.MAGENTA);  // Barreras
+        renderer.setSeriesPaint(0, Color.RED);
+        renderer.setSeriesPaint(1, Color.BLUE);
+        renderer.setSeriesPaint(2, Color.GREEN);
+        renderer.setSeriesPaint(3, Color.ORANGE);
+        renderer.setSeriesPaint(4, Color.MAGENTA);
+        renderer.setBaseShapesVisible(true);
+        Shape p = new Ellipse2D.Double(-3, -3, 6, 6);
+        renderer.setSeriesShape(0, p);
+        renderer.setSeriesShape(1, p);
+        renderer.setSeriesShape(2, p);
+        renderer.setSeriesShape(3, p);
+        renderer.setSeriesShape(4, p);
+        renderer.setSeriesStroke(0, new BasicStroke(2.5f));
+        renderer.setSeriesStroke(1, new BasicStroke(2.5f));
+        renderer.setSeriesStroke(2, new BasicStroke(2.5f));
+        renderer.setSeriesStroke(3, new BasicStroke(2.5f));
+        renderer.setSeriesStroke(4, new BasicStroke(2.5f));
         
         chart.setTitle(titulo);
         chart.getXYPlot().setDataset(dataset);
@@ -182,13 +198,7 @@ public class GraficasPanel extends JPanel {
         setPreferredSize(new Dimension(getPreferredSize().width, PANEL_HEIGHT));
         revalidate();
         
-        // Reiniciar contadores
-        for (int i = 0; i < contadoresPuntos.length; i++) {
-            contadoresPuntos[i] = 0;
-        }
         
-        // Actualizar estado
-        statusLabel.setText("Estado: Gráfico reiniciado - Esperando datos...");
     }
 
     private XYSeries buscarSerie(String nombre) {
@@ -213,22 +223,8 @@ public class GraficasPanel extends JPanel {
             if (s != null) {
                 s.add(x, y);
                 ajustarRangosYTamano(x);
-                
-                // Incrementar contador correspondiente
-                int index = getSerieIndex(serie);
-                if (index >= 0 && index < contadoresPuntos.length) {
-                    contadoresPuntos[index]++;
-                }
-                
-                String[] nombresSeries = {"Mutex", "Semáforos", "Monitores", "Var. Cond", "Barreras"};
-                StringBuilder resumen = new StringBuilder("<html>Puntos por serie:<br/>");
-                for (int i = 0; i < contadoresPuntos.length; i++) {
-                    resumen.append(nombresSeries[i]).append(": ").append(contadoresPuntos[i]).append("<br/>");
-                }
-                resumen.append("</html>");
-                statusLabel.setText(resumen.toString());
             } else {
-                statusLabel.setText("<html>Estado:<br/>ERROR - Serie no encontrada: " + serie + "</html>");
+                System.err.println("Serie no encontrada: " + serie);
             }
         });
     }
@@ -240,12 +236,6 @@ public class GraficasPanel extends JPanel {
             }
             chart.getXYPlot().getDomainAxis().setRange(0, 1);
             revalidate();
-            
-            // Reiniciar contadores
-            for (int i = 0; i < contadoresPuntos.length; i++) {
-                contadoresPuntos[i] = 0;
-            }
-            statusLabel.setText("Estado: Datos limpiados");
         });
     }
 }

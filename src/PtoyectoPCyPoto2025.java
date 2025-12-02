@@ -22,7 +22,6 @@ public class PtoyectoPCyPoto2025 extends JFrame {
     private JMenuItem itemFumadores;
     private JMenuItem itemLectoresEscritores;
     private JMenuItem itemEstacionSolar;
-    private JMenuItem itemEstacionSolarMPJ;
     private JMenuItem itemEstacionSolarMPJDrones;
     private JMenu menuGraficas;
     private JMenuItem itemAcordeon;
@@ -119,12 +118,9 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         itemFumadores = new JMenuItem("Fumadores");
         itemLectoresEscritores = new JMenuItem("Lectores - Escritores");
         itemEstacionSolar = new JMenuItem("Estación Solar");
-        itemEstacionSolarMPJ = new JMenuItem("Estación Solar (MPJ - Algoritmos)");
         itemEstacionSolarMPJDrones = new JMenuItem("Estación Solar (MPJ - Drones)");
         menuGraficas = new JMenu("Gráficas");
         
-        // Agregar acción a Estación Solar MPJ
-        itemEstacionSolarMPJ.addActionListener(e -> mostrarEstacionSolarMPJ());
         itemEstacionSolarMPJDrones.addActionListener(e -> mostrarEstacionSolarMPJDrones());
         itemAcordeon = new JMenuItem("Acordeón");
         itemCarrusel = new JMenuItem("Carrusel");
@@ -149,7 +145,6 @@ public class PtoyectoPCyPoto2025 extends JFrame {
         menuProblemas.add(itemFumadores);
         menuProblemas.add(itemLectoresEscritores);
         menuProblemas.add(itemEstacionSolar);
-        menuProblemas.add(itemEstacionSolarMPJ);
         menuProblemas.add(itemEstacionSolarMPJDrones);
 
         menuGraficas.add(itemAcordeon);
